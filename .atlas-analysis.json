@@ -1,0 +1,158 @@
+{
+  "projectType": "framework",
+  "projectName": "Harbor",
+  "projectDescription": "A framework for evaluating and optimizing AI agents and language models in containerized environments.",
+  "theme": "aspen",
+  "primaryColor": "#105864",
+  "lightColor": "#1a7a8a",
+  "darkColor": "#0d4450",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/tasks",
+              "concepts/agents",
+              "concepts/environments",
+              "concepts/trials-and-jobs",
+              "concepts/verifiers",
+              "concepts/metrics"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/running-evaluations",
+              "guides/cloud-execution",
+              "guides/creating-tasks",
+              "guides/custom-agents",
+              "guides/benchmark-adapters",
+              "guides/parallel-execution"
+            ]
+          },
+          {
+            "group": "Supported Integrations",
+            "pages": [
+              "integrations/agents",
+              "integrations/environments",
+              "integrations/benchmarks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/run",
+              "cli/jobs",
+              "cli/trials",
+              "cli/tasks",
+              "cli/datasets",
+              "cli/adapters",
+              "cli/traces",
+              "cli/sweeps",
+              "cli/cache",
+              "cli/view"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/job",
+              "api/base-agent",
+              "api/base-environment",
+              "api/agent-context"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/job-config",
+              "api/task-config",
+              "api/trial-config"
+            ]
+          },
+          {
+            "group": "Results & Metrics",
+            "pages": [
+              "api/job-result",
+              "api/trial-result",
+              "api/metrics"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Evaluation Examples",
+            "pages": [
+              "examples/terminal-bench",
+              "examples/swe-bench",
+              "examples/custom-benchmark"
+            ]
+          },
+          {
+            "group": "Advanced Usage",
+            "pages": [
+              "examples/rl-optimization",
+              "examples/parameter-sweeps",
+              "examples/custom-metrics"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Agent evaluation framework with support for multiple AI coding agents",
+    "Parallel execution across thousands of containerized environments",
+    "Support for major benchmarks (Terminal-Bench, SWE-Bench, Aider Polyglot)",
+    "Custom task and benchmark creation capabilities",
+    "Multiple environment providers (Docker, Daytona, Modal, E2B, Runloop, GKE)",
+    "Reinforcement learning rollout generation",
+    "Built-in verifiers and metrics collection",
+    "CLI-first design with comprehensive command suite"
+  ],
+  "publicApiSurface": [
+    "Job",
+    "BaseAgent",
+    "BaseEnvironment",
+    "AgentContext",
+    "JobConfig",
+    "TaskConfig",
+    "TrialConfig",
+    "JobResult",
+    "TrialResult",
+    "MetricConfig",
+    "harbor run",
+    "harbor jobs start",
+    "harbor datasets list",
+    "harbor tasks create",
+    "harbor agents list",
+    "harbor trials status",
+    "harbor traces export",
+    "harbor sweeps start",
+    "harbor view"
+  ]
+}
