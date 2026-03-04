@@ -1,0 +1,369 @@
+---
+title: Job Configuration
+description: Configuration models for Harbor jobs and orchestration
+---
+
+## JobConfig
+
+Defines the complete configuration for a Harbor evaluation job.
+
+**Import:** `from harbor.models.job.config import JobConfig`
+
+### Fields
+
+<ParamField path="job_name" type="str" default="datetime.now()">
+  Name of the job. Defaults to current timestamp in format `YYYY-MM-DD__HH-MM-SS`.
+</ParamField>
+
+<ParamField path="jobs_dir" type="Path" default="Path('jobs')">
+  Directory where job results are stored.
+</ParamField>
+
+<ParamField path="n_attempts" type="int" default="1">
+  Number of attempts to run each trial (for measuring variance).
+</ParamField>
+
+<ParamField path="timeout_multiplier" type="float" default="1.0">
+  Global multiplier for all timeout values.
+</ParamField>
+
+<ParamField path="agent_timeout_multiplier" type="float | None" default="None">
+  Specific multiplier for agent timeouts. Overrides `timeout_multiplier` for agents.
+</ParamField>
+
+<ParamField path="verifier_timeout_multiplier" type="float | None" default="None">
+  Specific multiplier for verifier timeouts. Overrides `timeout_multiplier` for verification.
+</ParamField>
+
+<ParamField path="agent_setup_timeout_multiplier" type="float | None" default="None">
+  Specific multiplier for agent setup timeouts.
+</ParamField>
+
+<ParamField path="environment_build_timeout_multiplier" type="float | None" default="None">
+  Specific multiplier for environment build timeouts.
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Enable debug logging.
+</ParamField>
+
+<ParamField path="orchestrator" type="OrchestratorConfig" default="OrchestratorConfig()">
+  Configuration for trial orchestration.
+</ParamField>
+
+<ParamField path="environment" type="EnvironmentConfig" default="EnvironmentConfig()">
+  Default environment configuration applied to all trials.
+</ParamField>
+
+<ParamField path="verifier" type="VerifierConfig" default="VerifierConfig()">
+  Default verifier configuration.
+</ParamField>
+
+<ParamField path="metrics" type="list[MetricConfig]" default="[]">
+  Metrics to compute across trials.
+</ParamField>
+
+<ParamField path="agents" type="list[AgentConfig]" default="[AgentConfig()]">
+  List of agents to evaluate.
+</ParamField>
+
+<ParamField path="datasets" type="list[LocalDatasetConfig | RegistryDatasetConfig]" default="[]">
+  Datasets to evaluate against.
+</ParamField>
+
+<ParamField path="tasks" type="list[TaskConfig]" default="[]">
+  Individual tasks to run (alternative to datasets).
+</ParamField>
+
+<ParamField path="artifacts" type="list[str | ArtifactConfig]" default="[]">
+  Files or directories to collect from trial environments.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.job.config import JobConfig, OrchestratorConfig
+from harbor.models.trial.config import AgentConfig, EnvironmentConfig
+from harbor.models.metric.config import MetricConfig
+from harbor.models.metric.type import MetricType
+
+config = JobConfig(
+    job_name="benchmark-evaluation",
+    n_attempts=3,
+    timeout_multiplier=1.5,
+    debug=True,
+    agents=[
+        AgentConfig(
+            name="claude-code",
+            model_name="anthropic/claude-opus-4-1"
+        ),
+        AgentConfig(
+            name="openhands",
+            model_name="anthropic/claude-sonnet-4-1"
+        )
+    ],
+    datasets=[
+        {"name": "terminal-bench", "version": "2.0"}
+    ],
+    orchestrator=OrchestratorConfig(
+        n_concurrent_trials=8,
+        quiet=False
+    ),
+    metrics=[
+        MetricConfig(type=MetricType.MEAN),
+        MetricConfig(type=MetricType.MAX)
+    ]
+)
+```
+
+## OrchestratorConfig
+
+Configuration for how trials are orchestrated and executed.
+
+**Import:** `from harbor.models.job.config import OrchestratorConfig`
+
+### Fields
+
+<ParamField path="type" type="OrchestratorType" default="OrchestratorType.LOCAL">
+  Type of orchestrator to use (LOCAL, MODAL, etc.).
+</ParamField>
+
+<ParamField path="n_concurrent_trials" type="int" default="4">
+  Maximum number of trials to run concurrently.
+</ParamField>
+
+<ParamField path="quiet" type="bool" default="False">
+  Suppress trial progress displays.
+</ParamField>
+
+<ParamField path="retry" type="RetryConfig" default="RetryConfig()">
+  Retry configuration for failed trials.
+</ParamField>
+
+<ParamField path="kwargs" type="dict[str, Any]" default="{}">
+  Additional orchestrator-specific configuration.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.job.config import OrchestratorConfig, RetryConfig
+from harbor.models.orchestrator_type import OrchestratorType
+
+orchestrator = OrchestratorConfig(
+    type=OrchestratorType.LOCAL,
+    n_concurrent_trials=16,
+    quiet=False,
+    retry=RetryConfig(
+        max_retries=2,
+        min_wait_sec=5.0,
+        max_wait_sec=60.0
+    )
+)
+```
+
+## RetryConfig
+
+Configuration for retrying failed trials.
+
+**Import:** `from harbor.models.job.config import RetryConfig`
+
+### Fields
+
+<ParamField path="max_retries" type="int" default="0">
+  Maximum number of retry attempts. Must be >= 0.
+</ParamField>
+
+<ParamField path="include_exceptions" type="set[str] | None" default="None">
+  Exception types to retry on. If None, retries all exceptions (subject to exclude_exceptions).
+</ParamField>
+
+<ParamField path="exclude_exceptions" type="set[str] | None">
+  Exception types to NOT retry on. Takes precedence over include_exceptions. Defaults to:
+  - `AgentTimeoutError`
+  - `VerifierTimeoutError`
+  - `RewardFileNotFoundError`
+  - `RewardFileEmptyError`
+  - `VerifierOutputParseError`
+</ParamField>
+
+<ParamField path="wait_multiplier" type="float" default="1.0">
+  Multiplier for exponential backoff wait time.
+</ParamField>
+
+<ParamField path="min_wait_sec" type="float" default="1.0">
+  Minimum wait time in seconds between retries.
+</ParamField>
+
+<ParamField path="max_wait_sec" type="float" default="60.0">
+  Maximum wait time in seconds between retries.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.job.config import RetryConfig
+
+retry_config = RetryConfig(
+    max_retries=3,
+    include_exceptions={"RateLimitError", "NetworkError"},
+    wait_multiplier=2.0,
+    min_wait_sec=2.0,
+    max_wait_sec=120.0
+)
+```
+
+## Dataset Configurations
+
+### LocalDatasetConfig
+
+Configuration for loading tasks from a local directory.
+
+**Import:** `from harbor.models.job.config import LocalDatasetConfig`
+
+#### Fields
+
+<ParamField path="path" type="Path" required>
+  Path to the local dataset directory.
+</ParamField>
+
+<ParamField path="task_names" type="list[str] | None" default="None">
+  Tasks to include from the dataset. Supports glob patterns (e.g., `test_*`).
+</ParamField>
+
+<ParamField path="exclude_task_names" type="list[str] | None" default="None">
+  Tasks to exclude from the dataset. Supports glob patterns.
+</ParamField>
+
+<ParamField path="n_tasks" type="int | None" default="None">
+  Maximum number of tasks to include. Applied after filtering.
+</ParamField>
+
+#### Example
+
+```python
+from pathlib import Path
+from harbor.models.job.config import LocalDatasetConfig
+
+dataset = LocalDatasetConfig(
+    path=Path("./my-tasks"),
+    task_names=["task_001", "task_002"],
+    n_tasks=10
+)
+```
+
+### RegistryDatasetConfig
+
+Configuration for loading tasks from a Harbor registry.
+
+**Import:** `from harbor.models.job.config import RegistryDatasetConfig`
+
+#### Fields
+
+<ParamField path="registry" type="LocalRegistryInfo | RemoteRegistryInfo" required>
+  Registry information (local or remote).
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Name of the dataset in the registry.
+</ParamField>
+
+<ParamField path="version" type="str | None" default="None">
+  Specific version to use. If None, uses the latest version.
+</ParamField>
+
+<ParamField path="overwrite" type="bool" default="False">
+  Whether to overwrite cached remote tasks.
+</ParamField>
+
+<ParamField path="download_dir" type="Path | None" default="None">
+  Directory to cache remote tasks to.
+</ParamField>
+
+<ParamField path="task_names" type="list[str] | None" default="None">
+  Tasks to include. Supports glob patterns.
+</ParamField>
+
+<ParamField path="exclude_task_names" type="list[str] | None" default="None">
+  Tasks to exclude. Supports glob patterns.
+</ParamField>
+
+<ParamField path="n_tasks" type="int | None" default="None">
+  Maximum number of tasks to include.
+</ParamField>
+
+#### Example
+
+```python
+from harbor.models.job.config import RegistryDatasetConfig
+from harbor.models.registry import RemoteRegistryInfo
+
+dataset = RegistryDatasetConfig(
+    registry=RemoteRegistryInfo(),
+    name="terminal-bench",
+    version="2.0",
+    task_names=["test_*"],
+    n_tasks=50
+)
+```
+
+## Complete Example
+
+```python
+from pathlib import Path
+from harbor.models.job.config import (
+    JobConfig,
+    OrchestratorConfig,
+    RetryConfig,
+    LocalDatasetConfig,
+)
+from harbor.models.trial.config import AgentConfig, EnvironmentConfig
+from harbor.models.environment_type import EnvironmentType
+
+config = JobConfig(
+    job_name="comprehensive-eval",
+    jobs_dir=Path("./evaluation-results"),
+    n_attempts=5,
+    timeout_multiplier=2.0,
+    agent_timeout_multiplier=1.5,
+    debug=True,
+    
+    orchestrator=OrchestratorConfig(
+        n_concurrent_trials=12,
+        retry=RetryConfig(
+            max_retries=2,
+            wait_multiplier=1.5
+        )
+    ),
+    
+    environment=EnvironmentConfig(
+        type=EnvironmentType.DOCKER,
+        force_build=False,
+        delete=True
+    ),
+    
+    agents=[
+        AgentConfig(
+            name="claude-code",
+            model_name="anthropic/claude-opus-4-1",
+            env={"LOG_LEVEL": "DEBUG"}
+        )
+    ],
+    
+    datasets=[
+        LocalDatasetConfig(
+            path=Path("./custom-tasks"),
+            task_names=["priority_*"],
+            n_tasks=20
+        )
+    ],
+    
+    artifacts=["*.log", "/workspace/output"]
+)
+```
+
+## Related Types
+
+- [TrialConfig](/api/trial-config) - Individual trial configuration
+- [TaskConfig](/api/task-config) - Task-level configuration
+- [MetricConfig](/api/metrics#metricconfig) - Metric configuration

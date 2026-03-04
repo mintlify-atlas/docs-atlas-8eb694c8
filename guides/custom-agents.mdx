@@ -1,0 +1,627 @@
+---
+title: Custom Agents
+description: Implement your own agents to evaluate with Harbor
+---
+
+Harbor makes it easy to evaluate custom agents alongside built-in ones. This guide shows you how to implement your own agent that integrates seamlessly with Harbor's evaluation framework.
+
+## Agent Interface
+
+All agents inherit from `BaseAgent` and implement these core methods:
+
+```python
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class MyCustomAgent(BaseAgent):
+    # Set to True if your agent supports ATIF trajectory format
+    SUPPORTS_ATIF: bool = False
+    
+    @staticmethod
+    def name() -> str:
+        """Return the agent's name."""
+        return "my-custom-agent"
+    
+    def version(self) -> str | None:
+        """Return the agent's version."""
+        return "1.0.0"
+    
+    async def setup(self, environment: BaseEnvironment) -> None:
+        """Setup the agent in the environment."""
+        # Install agent, configure settings, etc.
+        pass
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        """Run the agent on the task."""
+        # Execute agent and populate context
+        pass
+```
+
+## Quick Start
+
+Create a simple custom agent:
+
+<Steps>
+
+### Step 1: Create Agent File
+
+```python my_agent.py
+from pathlib import Path
+import asyncio
+
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class SimpleAgent(BaseAgent):
+    @staticmethod
+    def name() -> str:
+        return "simple-agent"
+    
+    def version(self) -> str | None:
+        return "0.1.0"
+    
+    async def setup(self, environment: BaseEnvironment) -> None:
+        # No setup needed for this simple agent
+        pass
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        # Simple agent that creates a hello.txt file
+        result = await environment.exec(
+            'echo "Hello, world!" > /app/hello.txt'
+        )
+        
+        # Log execution details
+        self.logger.info(f"Executed command, return code: {result.return_code}")
+        
+        # Update context with execution details
+        context.commands_executed = 1
+```
+
+### Step 2: Run Your Agent
+
+```bash
+harbor run --tasks ./my-task \
+  --agent my_agent:SimpleAgent \
+  --agent-import-path my_agent.py
+```
+
+</Steps>
+
+## BaseAgent Methods
+
+### name() (Required)
+
+Return a unique identifier for your agent:
+
+```python
+@staticmethod
+def name() -> str:
+    return "my-agent"
+```
+
+### version() (Required)
+
+Return the agent version for reproducibility:
+
+```python
+def version(self) -> str | None:
+    return "1.0.0"  # Semantic versioning recommended
+```
+
+### setup() (Required)
+
+Install and configure the agent in the environment:
+
+```python
+async def setup(self, environment: BaseEnvironment) -> None:
+    # Install dependencies
+    await environment.exec("pip install my-agent-package")
+    
+    # Upload configuration files
+    config_path = Path(__file__).parent / "config.yaml"
+    await environment.upload_file(config_path, "/root/.my-agent/config.yaml")
+    
+    # Run setup commands
+    await environment.exec("my-agent init")
+```
+
+### run() (Required)
+
+Execute the agent on the task:
+
+```python
+async def run(
+    self,
+    instruction: str,
+    environment: BaseEnvironment,
+    context: AgentContext,
+) -> None:
+    # Run the agent
+    result = await environment.exec(
+        f'my-agent solve "{instruction}"',
+        timeout_sec=300
+    )
+    
+    # Populate context for tracking
+    context.commands_executed = 1
+    context.exit_code = result.return_code
+```
+
+## Using the Environment
+
+The `BaseEnvironment` provides methods to interact with the containerized environment:
+
+### Executing Commands
+
+```python
+# Basic command execution
+result = await environment.exec("ls -la /app")
+print(result.stdout)  # Command output
+print(result.stderr)  # Error output
+print(result.return_code)  # Exit code
+
+# With working directory
+result = await environment.exec(
+    "python script.py",
+    cwd="/app/src"
+)
+
+# With environment variables
+result = await environment.exec(
+    "npm test",
+    env={"NODE_ENV": "test", "DEBUG": "true"}
+)
+
+# With timeout
+result = await environment.exec(
+    "long-running-task",
+    timeout_sec=600
+)
+```
+
+### File Operations
+
+```python
+# Upload a single file
+await environment.upload_file(
+    source_path="/local/path/config.json",
+    target_path="/app/config.json"
+)
+
+# Upload a directory
+await environment.upload_dir(
+    source_dir="/local/path/assets",
+    target_dir="/app/assets"
+)
+
+# Download a file
+await environment.download_file(
+    source_path="/app/output.json",
+    target_path=self.logs_dir / "output.json"
+)
+
+# Download a directory
+await environment.download_dir(
+    source_dir="/app/results",
+    target_dir=self.logs_dir / "results"
+)
+
+# Check file existence
+if await environment.is_file("/app/data.csv"):
+    print("Data file exists")
+
+# Check directory existence
+if await environment.is_dir("/app/output"):
+    print("Output directory exists")
+```
+
+## Populating Context
+
+The `AgentContext` tracks execution metrics and results:
+
+```python
+async def run(
+    self,
+    instruction: str,
+    environment: BaseEnvironment,
+    context: AgentContext,
+) -> None:
+    start_time = time.time()
+    
+    # Run agent
+    result = await environment.exec("my-agent run")
+    
+    # Update context
+    context.commands_executed = 1
+    context.exit_code = result.return_code
+    context.n_input_tokens = 1000  # From LLM usage
+    context.n_output_tokens = 500
+    context.cost_usd = 0.05
+    context.error_message = result.stderr if result.return_code != 0 else None
+    
+    # Save agent logs
+    log_file = self.logs_dir / "agent.log"
+    log_file.write_text(result.stdout or "")
+```
+
+### AgentContext Fields
+
+- `commands_executed` - Number of commands run
+- `exit_code` - Final exit code
+- `n_input_tokens` - LLM input tokens used
+- `n_output_tokens` - LLM output tokens used
+- `n_cache_tokens` - Cached tokens used
+- `cost_usd` - Total cost in USD
+- `error_message` - Error description if failed
+
+## Installed Agents Pattern
+
+For agents that require installation, extend `BaseInstalledAgent`:
+
+```python
+from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
+
+class MyInstalledAgent(BaseInstalledAgent):
+    @property
+    def _install_agent_template_path(self) -> Path:
+        # Path to installation script template
+        return Path(__file__).parent / "install-my-agent.sh.j2"
+    
+    def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
+        # Return list of commands to run the agent
+        return [
+            ExecInput(
+                command=f'my-agent run "{instruction}"',
+                env={"API_KEY": os.environ.get("MY_AGENT_API_KEY", "")}
+            )
+        ]
+```
+
+Installation template (`install-my-agent.sh.j2`):
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+# Install dependencies
+pip install my-agent-cli=={{ agent_version }}
+
+# Configure agent
+mkdir -p ~/.my-agent
+cat > ~/.my-agent/config.yaml << 'EOF'
+model: {{ model_name }}
+max_iterations: 50
+EOF
+
+echo "Agent installed successfully"
+```
+
+## Agent Configuration
+
+Accept configuration through constructor:
+
+```python
+class ConfigurableAgent(BaseAgent):
+    def __init__(
+        self,
+        max_iterations: int = 50,
+        temperature: float = 0.7,
+        *args,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self._max_iterations = max_iterations
+        self._temperature = temperature
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        result = await environment.exec(
+            f"my-agent run --iterations {self._max_iterations} "
+            f"--temperature {self._temperature}"
+        )
+```
+
+Pass configuration via CLI:
+
+```bash
+harbor run --tasks ./my-task \
+  --agent my_agent:ConfigurableAgent \
+  --agent-import-path my_agent.py \
+  --ak max_iterations:int=100 \
+  --ak temperature:float=0.9
+```
+
+## MCP Server Support
+
+Access MCP servers provided by tasks:
+
+```python
+class MCPAwareAgent(BaseAgent):
+    async def setup(self, environment: BaseEnvironment) -> None:
+        # MCP servers available in self.mcp_servers
+        if self.mcp_servers:
+            # Create agent config with MCP servers
+            servers = {}
+            for server in self.mcp_servers:
+                if server.transport == "stdio":
+                    servers[server.name] = {
+                        "command": server.command,
+                        "args": server.args
+                    }
+                else:
+                    servers[server.name] = {
+                        "url": server.url
+                    }
+            
+            # Write config
+            config = json.dumps({"mcpServers": servers})
+            await environment.exec(
+                f"echo '{config}' > ~/.my-agent/mcp.json"
+            )
+```
+
+## Skills Support
+
+Access skills provided by tasks:
+
+```python
+class SkillAwareAgent(BaseAgent):
+    async def setup(self, environment: BaseEnvironment) -> None:
+        # Skills directory available in self.skills_dir
+        if self.skills_dir:
+            # Copy skills to agent's expected location
+            await environment.exec(
+                f"cp -r {self.skills_dir}/* ~/.my-agent/skills/"
+            )
+```
+
+## Trajectory Support (ATIF)
+
+For advanced agents, implement trajectory tracking:
+
+```python
+from harbor.models.trajectories import (
+    Trajectory, Agent, Step, ToolCall, Observation
+)
+
+class ATIFAgent(BaseAgent):
+    SUPPORTS_ATIF = True  # Enable trajectory support
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        # Run agent and collect trajectory
+        result = await environment.exec("my-agent run --output-trajectory")
+        
+        # Download trajectory
+        await environment.download_file(
+            "/app/trajectory.json",
+            self.logs_dir / "trajectory.json"
+        )
+        
+        # Harbor automatically detects and processes trajectory.json
+```
+
+## Error Handling
+
+Implement robust error handling:
+
+```python
+async def run(
+    self,
+    instruction: str,
+    environment: BaseEnvironment,
+    context: AgentContext,
+) -> None:
+    try:
+        result = await environment.exec(
+            "my-agent run",
+            timeout_sec=300
+        )
+        
+        if result.return_code != 0:
+            context.exit_code = result.return_code
+            context.error_message = f"Agent failed: {result.stderr}"
+            self.logger.error(context.error_message)
+            return
+        
+        context.exit_code = 0
+        
+    except asyncio.TimeoutError:
+        context.error_message = "Agent execution timed out"
+        self.logger.error(context.error_message)
+        
+    except Exception as e:
+        context.error_message = f"Unexpected error: {str(e)}"
+        self.logger.exception("Agent execution failed")
+```
+
+## Testing Your Agent
+
+### Unit Tests
+
+```python tests/test_my_agent.py
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+
+from my_agent import MyCustomAgent
+from harbor.environments.base import ExecResult
+from harbor.models.agent.context import AgentContext
+
+@pytest.mark.asyncio
+async def test_agent_run():
+    # Setup
+    agent = MyCustomAgent(logs_dir=Path("/tmp"))
+    environment = AsyncMock()
+    environment.exec.return_value = ExecResult(
+        stdout="Success",
+        stderr="",
+        return_code=0
+    )
+    context = AgentContext()
+    
+    # Execute
+    await agent.run("test instruction", environment, context)
+    
+    # Assert
+    assert context.exit_code == 0
+    assert environment.exec.called
+```
+
+### Integration Tests
+
+```bash
+# Test on a simple task
+harbor run --tasks examples/tasks/hello-world \
+  --agent my_agent:MyCustomAgent \
+  --agent-import-path my_agent.py
+```
+
+## Real-World Example
+
+Here's a complete example of a custom agent that uses OpenAI's API:
+
+```python openai_agent.py
+import os
+import json
+from pathlib import Path
+import asyncio
+
+from openai import AsyncOpenAI
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class OpenAIAgent(BaseAgent):
+    def __init__(
+        self,
+        max_iterations: int = 10,
+        *args,
+        **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self._max_iterations = max_iterations
+        self._client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    
+    @staticmethod
+    def name() -> str:
+        return "openai-agent"
+    
+    def version(self) -> str | None:
+        return "1.0.0"
+    
+    async def setup(self, environment: BaseEnvironment) -> None:
+        # No installation needed
+        pass
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that solves tasks."},
+            {"role": "user", "content": instruction}
+        ]
+        
+        total_input_tokens = 0
+        total_output_tokens = 0
+        iterations = 0
+        
+        for i in range(self._max_iterations):
+            iterations += 1
+            
+            # Call OpenAI
+            response = await self._client.chat.completions.create(
+                model=self.model_name or "gpt-4",
+                messages=messages
+            )
+            
+            # Track usage
+            if response.usage:
+                total_input_tokens += response.usage.prompt_tokens
+                total_output_tokens += response.usage.completion_tokens
+            
+            message = response.choices[0].message
+            messages.append(message.model_dump())
+            
+            # Execute tool calls if any
+            if message.tool_calls:
+                for tool_call in message.tool_calls:
+                    if tool_call.function.name == "execute_bash":
+                        args = json.loads(tool_call.function.arguments)
+                        result = await environment.exec(args["command"])
+                        
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result.stdout or result.stderr or ""
+                        })
+            
+            # Check if done
+            if message.content and "task complete" in message.content.lower():
+                break
+        
+        # Update context
+        context.commands_executed = iterations
+        context.n_input_tokens = total_input_tokens
+        context.n_output_tokens = total_output_tokens
+        context.exit_code = 0
+```
+
+Run it:
+
+```bash
+export OPENAI_API_KEY=<YOUR-KEY>
+harbor run --tasks ./my-task \
+  --agent openai_agent:OpenAIAgent \
+  --agent-import-path openai_agent.py \
+  --model gpt-4 \
+  --ak max_iterations:int=20
+```
+
+## Best Practices
+
+1. **Handle timeouts gracefully**: Agents may be interrupted
+2. **Log extensively**: Use `self.logger` for debugging
+3. **Populate context**: Track metrics for analysis
+4. **Save artifacts**: Download important files to `self.logs_dir`
+5. **Use async properly**: All environment operations are async
+6. **Test thoroughly**: Unit test logic, integration test with real tasks
+7. **Version your agent**: Update version when behavior changes
+8. **Document configuration**: Explain all constructor parameters
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Evaluations" icon="play" href="/guides/running-evaluations">
+    Run evaluations with your custom agent
+  </Card>
+  <Card title="Creating Tasks" icon="file-code" href="/guides/creating-tasks">
+    Build tasks to test your agent's capabilities
+  </Card>
+  <Card title="Benchmark Adapters" icon="puzzle-piece" href="/guides/benchmark-adapters">
+    Evaluate your agent on standard benchmarks
+  </Card>
+</CardGroup>

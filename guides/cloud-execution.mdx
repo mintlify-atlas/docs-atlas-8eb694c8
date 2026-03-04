@@ -1,0 +1,403 @@
+---
+title: Cloud Execution
+description: Run evaluations at scale using cloud providers like Daytona, Modal, and E2B
+---
+
+Harbor supports multiple cloud environment providers, allowing you to run hundreds or thousands of trials in parallel. This guide covers setup and usage for each supported provider.
+
+## Supported Providers
+
+Harbor supports the following cloud execution environments:
+
+- **Daytona** - Fast container-based sandboxes with Docker-in-Docker support
+- **Modal** - Serverless containers with GPU support
+- **E2B** - Secure sandboxes with fast startup times
+- **Runloop** - Managed evaluation environments
+- **GKE** - Google Kubernetes Engine for large-scale deployments
+
+## Daytona
+
+Daytona provides fast, ephemeral development environments perfect for agent evaluation.
+
+### Setup
+
+<Steps>
+
+### Step 1: Get API Key
+
+Sign up at [daytona.io](https://daytona.io) and obtain your API key.
+
+### Step 2: Set Environment Variable
+
+```bash
+export DAYTONA_API_KEY=<YOUR-KEY>
+```
+
+### Step 3: Run Evaluation
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 100
+```
+
+</Steps>
+
+### Configuration Options
+
+Daytona environments support several configuration options:
+
+```bash
+# Set auto-delete interval (minutes after stop)
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek auto_delete_interval_mins:int=30
+
+# Set auto-stop interval (minutes of inactivity)
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek auto_stop_interval_mins:int=60
+
+# Use a snapshot template for faster startup
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek snapshot_template_name="harbor__{name}__snapshot"
+```
+
+### Docker Compose Support
+
+Daytona automatically detects when your task uses Docker Compose and creates a Docker-in-Docker environment:
+
+```yaml docker-compose.yaml
+services:
+  main:
+    build: .
+    volumes:
+      - agent-logs:/logs/agent
+      - verifier-logs:/logs/verifier
+  
+  mcp-server:
+    image: my-mcp-server:latest
+    ports:
+      - "3000:3000"
+
+volumes:
+  agent-logs:
+  verifier-logs:
+```
+
+<Note>
+When using Docker Compose, Daytona creates a DinD (Docker-in-Docker) sandbox and runs `docker compose` inside it. The `main` service is where agent commands execute.
+</Note>
+
+### Advanced Configuration
+
+```bash
+# Disable network access
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek network_block_all:bool=true
+
+# Use custom DinD image for compose tasks
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek dind_image="docker:28.3.3-dind"
+
+# Use DinD snapshot for faster compose startup
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek dind_snapshot="my-dind-snapshot"
+```
+
+## Modal
+
+Modal provides serverless containers with excellent GPU support, ideal for ML-heavy evaluations.
+
+### Setup
+
+<Steps>
+
+### Step 1: Install Modal
+
+```bash
+pip install modal
+```
+
+### Step 2: Authenticate
+
+```bash
+modal token new
+```
+
+### Step 3: Run Evaluation
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env modal \
+  --n-concurrent 50
+```
+
+</Steps>
+
+### GPU Support
+
+Modal is the recommended provider for GPU-enabled tasks:
+
+```bash
+# Run task with GPU
+harbor run --tasks ./my-gpu-task \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env modal
+```
+
+Your task configuration specifies GPU requirements:
+
+```toml task.toml
+[environment]
+gpus = 1
+gpu_types = ["a100", "h100"]
+cpus = 8
+memory = "32G"
+```
+
+### Configuration Options
+
+```bash
+# Mount Modal secrets
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env modal \
+  --ek secrets='["my-secret-1", "my-secret-2"]'
+
+# Mount Modal volumes
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env modal \
+  --ek volumes='{"path": "/data", "volume_name": "my-volume"}'
+
+# Set sandbox timeout (seconds)
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env modal \
+  --ek sandbox_timeout_secs:int=7200
+
+# Set idle timeout
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env modal \
+  --ek sandbox_idle_timeout_secs:int=300
+```
+
+## E2B
+
+E2B provides secure, fast-starting sandboxes with built-in internet isolation.
+
+### Setup
+
+<Steps>
+
+### Step 1: Get API Key
+
+Sign up at [e2b.dev](https://e2b.dev) and obtain your API key.
+
+### Step 2: Set Environment Variable
+
+```bash
+export E2B_API_KEY=<YOUR-KEY>
+```
+
+### Step 3: Run Evaluation
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env e2b \
+  --n-concurrent 75
+```
+
+</Steps>
+
+### Network Isolation
+
+E2B supports network isolation by default when specified in task config:
+
+```toml task.toml
+[environment]
+allow_internet = false
+```
+
+## Runloop
+
+Runloop provides managed environments optimized for agent evaluation.
+
+### Setup
+
+<Steps>
+
+### Step 1: Install Runloop SDK
+
+```bash
+pip install runloop-api-client
+```
+
+### Step 2: Set API Key
+
+```bash
+export RUNLOOP_API_KEY=<YOUR-KEY>
+```
+
+### Step 3: Run Evaluation
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env runloop \
+  --n-concurrent 50
+```
+
+</Steps>
+
+## Google Kubernetes Engine (GKE)
+
+For large-scale enterprise deployments, Harbor supports GKE.
+
+### Setup
+
+<Steps>
+
+### Step 1: Configure GKE Cluster
+
+Ensure you have a GKE cluster running and `kubectl` configured.
+
+### Step 2: Set Credentials
+
+```bash
+gcloud auth application-default login
+```
+
+### Step 3: Run Evaluation
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --env gke \
+  --n-concurrent 200
+```
+
+</Steps>
+
+<Warning>
+GKE support is in beta. Contact the Harbor team for production deployment guidance.
+</Warning>
+
+## Choosing a Provider
+
+| Provider | Best For | GPU Support | Max Concurrency | Startup Time |
+|----------|----------|-------------|-----------------|-------------|
+| **Daytona** | General purpose, Docker Compose | No | 100+ | Fast |
+| **Modal** | GPU workloads, ML tasks | Yes | 50+ | Medium |
+| **E2B** | Security-sensitive, isolated | No | 75+ | Very Fast |
+| **Runloop** | Managed environments | No | 50+ | Fast |
+| **GKE** | Enterprise scale | Yes* | 200+ | Medium |
+
+*GKE GPU support requires cluster configuration
+
+## Cost Optimization
+
+### Use Snapshots
+
+Pre-build environment snapshots to reduce startup time and costs:
+
+```bash
+# Create snapshot (Daytona)
+daytona snapshot create my-task-snapshot --from-sandbox <sandbox-id>
+
+# Use snapshot in evaluation
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek snapshot_template_name="my-task-snapshot"
+```
+
+### Optimize Concurrency
+
+Higher concurrency completes faster but may hit rate limits:
+
+```bash
+# Conservative: fewer concurrent trials
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 25
+
+# Aggressive: more concurrent trials
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 100
+```
+
+### Use Auto-Delete
+
+Ensure environments are deleted promptly to avoid idle charges:
+
+```bash
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek auto_delete_interval_mins:int=5
+```
+
+## Troubleshooting
+
+### Rate Limits
+
+If you hit provider rate limits, reduce concurrency:
+
+```bash
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 20  # Reduced from 100
+```
+
+### Build Timeouts
+
+Increase build timeout for complex Docker images:
+
+```bash
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 \
+  --env modal \
+  --environment-build-timeout-multiplier 3.0
+```
+
+### Network Issues
+
+Check if your task requires internet access:
+
+```toml task.toml
+[environment]
+allow_internet = true  # Required for tasks that download dependencies
+```
+
+## Best Practices
+
+1. **Test locally first**: Run 1-2 tasks locally before scaling to cloud
+2. **Start with lower concurrency**: Gradually increase to find optimal throughput
+3. **Use snapshots**: Pre-build images to reduce startup time
+4. **Monitor costs**: Track cloud provider spending
+5. **Set timeouts**: Configure auto-stop and auto-delete to avoid idle charges
+6. **Choose the right provider**: Match provider capabilities to your task requirements
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Evaluations" icon="play" href="/guides/running-evaluations">
+    Learn the basics of running evaluations
+  </Card>
+  <Card title="Parallel Execution" icon="arrows-split" href="/guides/parallel-execution">
+    Optimize parallel execution strategies
+  </Card>
+  <Card title="Creating Tasks" icon="file-code" href="/guides/creating-tasks">
+    Build tasks optimized for cloud execution
+  </Card>
+</CardGroup>

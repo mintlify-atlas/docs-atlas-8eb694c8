@@ -1,0 +1,619 @@
+---
+title: Supported Benchmarks
+description: Complete list of benchmarks and datasets available in Harbor
+---
+
+Harbor supports a comprehensive collection of benchmarks for evaluating AI coding agents across different domains and difficulty levels.
+
+## Benchmark Categories
+
+<CardGroup cols={3}>
+  <Card title="Software Engineering" icon="code">
+    Real-world repository and bug-fixing tasks
+  </Card>
+  <Card title="Code Generation" icon="wand-magic-sparkles">
+    Function and program synthesis challenges
+  </Card>
+  <Card title="Machine Learning" icon="brain">
+    ML model development and experimentation
+  </Card>
+  <Card title="Mathematics" icon="calculator">
+    Mathematical reasoning and problem solving
+  </Card>
+  <Card title="Multi-Modal" icon="images">
+    Tasks requiring image and text understanding
+  </Card>
+  <Card title="Data Science" icon="chart-line">
+    Data analysis and SQL query tasks
+  </Card>
+</CardGroup>
+
+## Software Engineering Benchmarks
+
+### SWE-Bench Family
+
+Repositoryand pull request based software engineering tasks.
+
+<AccordionGroup>
+  <Accordion title="SWE-Bench">
+    **Dataset:** `swebench`
+    
+    **Tasks:** Real GitHub issues from popular Python repositories
+    
+    **Difficulty:** Hard
+    
+    The original SWE-Bench dataset containing real-world GitHub issues.
+    
+    ```bash
+    harbor run --dataset swebench@lite --agent claude-code
+    ```
+  </Accordion>
+
+  <Accordion title="SWE-Bench Pro">
+    **Dataset:** `swebenchpro`
+    
+    **Tasks:** Enhanced version with more complex issues
+    
+    **Difficulty:** Very Hard
+    
+    Extended version of SWE-Bench with additional complexity.
+  </Accordion>
+
+  <Accordion title="SWESmith">
+    **Dataset:** `swesmith`
+    
+    **Tasks:** Synthetic repository editing tasks
+    
+    **Difficulty:** Medium-Hard
+    
+    Synthetically generated tasks for controlled evaluation.
+  </Accordion>
+
+  <Accordion title="SWT-Bench">
+    **Dataset:** `swtbench`
+    
+    **Tasks:** Test-focused software engineering tasks
+    
+    **Difficulty:** Hard
+    
+    Tasks focused on test writing and debugging.
+  </Accordion>
+
+  <Accordion title="SWELancer">
+    **Dataset:** `swelancer`
+    
+    **Tasks:** Freelancer-style coding tasks
+    
+    **Difficulty:** Medium
+    
+    Real-world freelancer programming tasks.
+  </Accordion>
+</AccordionGroup>
+
+### Other Software Engineering
+
+<AccordionGroup>
+  <Accordion title="DevEval">
+    **Dataset:** `deveval`
+    
+    **Tasks:** Development environment evaluation tasks
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="QuixBugs">
+    **Dataset:** `quixbugs`
+    
+    **Tasks:** Bug detection and fixing in small programs
+    
+    **Difficulty:** Easy-Medium
+    
+    Classic bugs from introductory programming.
+  </Accordion>
+
+  <Accordion title="CRUSTBench">
+    **Dataset:** `crustbench`
+    
+    **Tasks:** Rust programming challenges
+    
+    **Difficulty:** Medium-Hard
+    
+    Rust-specific coding tasks.
+  </Accordion>
+</AccordionGroup>
+
+## Code Generation Benchmarks
+
+<AccordionGroup>
+  <Accordion title="Aider Polyglot">
+    **Dataset:** `aider-polyglot`
+    
+    **Languages:** Python, Java, Go, Rust, C++
+    
+    **Tasks:** Cross-language code editing challenges
+    
+    **Difficulty:** Medium
+    
+    Multi-language coding tasks from Exercism.
+    
+    ```bash
+    harbor run --dataset aider-polyglot@1.0 --agent aider
+    ```
+  </Accordion>
+
+  <Accordion title="LiveCodeBench">
+    **Dataset:** `livecodebench`
+    
+    **Tasks:** Recent competitive programming problems
+    
+    **Difficulty:** Medium-Hard
+    
+    Fresh problems to avoid training data contamination.
+  </Accordion>
+
+  <Accordion title="AutoCodeBench">
+    **Dataset:** `autocodebench`
+    
+    **Tasks:** Automated code generation tasks
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="CompileBench">
+    **Dataset:** `compilebench`
+    
+    **Tasks:** Code that must compile and run correctly
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="HumanEvalFix">
+    **Dataset:** `humanevalfix`
+    
+    **Tasks:** Fix buggy implementations of HumanEval
+    
+    **Difficulty:** Easy-Medium
+  </Accordion>
+
+  <Accordion title="EvoEval">
+    **Dataset:** `evoeval`
+    
+    **Tasks:** Evolved versions of HumanEval
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="BigCodeBench Hard">
+    **Dataset:** `bigcodebench_hard`
+    
+    **Tasks:** Challenging code generation problems
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="BixBench">
+    **Dataset:** `bixbench`
+    
+    **Tasks:** Code generation with context
+    
+    **Difficulty:** Medium
+  </Accordion>
+</AccordionGroup>
+
+## Machine Learning Benchmarks
+
+<AccordionGroup>
+  <Accordion title="ML-Gym Bench">
+    **Dataset:** `mlgym-bench`
+    
+    **Tasks:** Complete ML pipeline development
+    
+    **Difficulty:** Hard
+    
+    End-to-end machine learning model development.
+    
+    ```bash
+    harbor run --dataset mlgym-bench@full --agent terminus --gpu A100
+    ```
+  </Accordion>
+
+  <Accordion title="ReplicationBench">
+    **Dataset:** `replicationbench`
+    
+    **Tasks:** Reproduce ML research results
+    
+    **Difficulty:** Very Hard
+    
+    Tasks require replicating published ML results.
+  </Accordion>
+
+  <Accordion title="SLDBench">
+    **Dataset:** `sldbench`
+    
+    **Tasks:** Scaling law discovery and prediction
+    
+    **Difficulty:** Hard
+    
+    Understanding and predicting ML scaling behaviors.
+  </Accordion>
+
+  <Accordion title="LabBench">
+    **Dataset:** `labbench`
+    
+    **Tasks:** Laboratory experiment automation
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="DS-1000">
+    **Dataset:** `ds1000`
+    
+    **Tasks:** Data science programming with libraries
+    
+    **Difficulty:** Medium
+  </Accordion>
+</AccordionGroup>
+
+## Mathematics and Reasoning
+
+<AccordionGroup>
+  <Accordion title="AIME">
+    **Dataset:** `aime`
+    
+    **Tasks:** American Invitational Mathematics Examination
+    
+    **Difficulty:** Very Hard
+    
+    High school mathematics competition problems.
+    
+    ```bash
+    harbor run --dataset aime@2024 --agent claude-code
+    ```
+  </Accordion>
+
+  <Accordion title="GPQA Diamond">
+    **Dataset:** `gpqa-diamond`
+    
+    **Tasks:** Graduate-level science questions
+    
+    **Difficulty:** Very Hard
+    
+    PhD-level questions in science domains.
+  </Accordion>
+
+  <Accordion title="USACO">
+    **Dataset:** `usaco`
+    
+    **Tasks:** USA Computing Olympiad problems
+    
+    **Difficulty:** Hard
+    
+    Competitive programming from USACO.
+  </Accordion>
+
+  <Accordion title="IneqMath">
+    **Dataset:** `ineqmath`
+    
+    **Tasks:** Mathematical inequality problems
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="Reasoning Gym">
+    **Dataset:** `reasoning-gym`
+    
+    **Tasks:** Multi-step reasoning challenges
+    
+    **Difficulty:** Medium-Hard
+  </Accordion>
+
+  <Accordion title="SAT Bench">
+    **Dataset:** `satbench`
+    
+    **Tasks:** Boolean satisfiability problems
+    
+    **Difficulty:** Hard
+  </Accordion>
+</AccordionGroup>
+
+## Multi-Modal and Specialized
+
+<AccordionGroup>
+  <Accordion title="MMAU">
+    **Dataset:** `mmau`
+    
+    **Tasks:** Multi-modal agent understanding
+    
+    **Difficulty:** Hard
+    
+    Tasks requiring both image and text understanding.
+  </Accordion>
+
+  <Accordion title="GAIA">
+    **Dataset:** `gaia`
+    
+    **Tasks:** General AI assistant evaluation
+    
+    **Difficulty:** Hard
+    
+    Real-world assistant tasks with multi-modal inputs.
+  </Accordion>
+
+  <Accordion title="ARC-AGI-2">
+    **Dataset:** `arc_agi_2`
+    
+    **Tasks:** Abstract reasoning challenges
+    
+    **Difficulty:** Very Hard
+    
+    Grid-based abstract reasoning puzzles.
+  </Accordion>
+</AccordionGroup>
+
+## Data Science and SQL
+
+<AccordionGroup>
+  <Accordion title="BIRD Bench">
+    **Dataset:** `bird_bench`
+    
+    **Tasks:** Complex SQL query generation
+    
+    **Difficulty:** Hard
+    
+    Real-world database querying tasks.
+  </Accordion>
+
+  <Accordion title="Spider2-DBT">
+    **Dataset:** `spider2-dbt`
+    
+    **Tasks:** DBT data transformation
+    
+    **Difficulty:** Medium-Hard
+  </Accordion>
+</AccordionGroup>
+
+## Domain-Specific Benchmarks
+
+<AccordionGroup>
+  <Accordion title="CodePDE">
+    **Dataset:** `codepde`
+    
+    **Tasks:** Partial differential equation solving
+    
+    **Difficulty:** Very Hard
+  </Accordion>
+
+  <Accordion title="QCircuitBench">
+    **Dataset:** `qcircuitbench`
+    
+    **Tasks:** Quantum circuit design
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="FinanceAgent">
+    **Dataset:** `financeagent`
+    
+    **Tasks:** Financial analysis and modeling
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="LawBench">
+    **Dataset:** `lawbench`
+    
+    **Tasks:** Legal reasoning and analysis
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="MMMLU">
+    **Dataset:** `mmmlu`
+    
+    **Tasks:** Massive multi-task language understanding
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="AlgoTune">
+    **Dataset:** `algotune`
+    
+    **Tasks:** Algorithm optimization
+    
+    **Difficulty:** Hard
+  </Accordion>
+
+  <Accordion title="BFCL">
+    **Dataset:** `bfcl`
+    
+    **Tasks:** Berkeley function calling benchmark
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="DABStep">
+    **Dataset:** `dabstep`
+    
+    **Tasks:** Data analysis benchmarking
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="Kumo">
+    **Dataset:** `kumo`
+    
+    **Tasks:** Cloud infrastructure tasks
+    
+    **Difficulty:** Medium
+  </Accordion>
+
+  <Accordion title="SimpleQA">
+    **Dataset:** `simpleqa`
+    
+    **Tasks:** Simple question answering
+    
+    **Difficulty:** Easy
+  </Accordion>
+
+  <Accordion title="StrongReject">
+    **Dataset:** `strongreject`
+    
+    **Tasks:** Safety and refusal evaluation
+    
+    **Difficulty:** Medium
+  </Accordion>
+</AccordionGroup>
+
+## Usage
+
+### List Available Datasets
+
+View all available datasets and their versions:
+
+```bash
+harbor datasets list
+```
+
+### Run a Benchmark
+
+Basic benchmark execution:
+
+```bash
+harbor run \
+  --dataset swebench@lite \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1
+```
+
+### Run Specific Tasks
+
+Run a subset of tasks from a benchmark:
+
+```bash
+harbor run \
+  --dataset aider-polyglot@1.0 \
+  --agent aider \
+  --model anthropic/claude-sonnet-4 \
+  --task-filter "polyglot_python_*"
+```
+
+### Parallel Execution
+
+Run multiple trials concurrently:
+
+```bash
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent openhands \
+  --model openai/o1 \
+  --n-concurrent 10
+```
+
+## Creating Custom Benchmarks
+
+To create a custom benchmark adapter:
+
+1. Create a directory in `adapters/{benchmark-name}/`
+2. Implement `adapter.py` with dataset loading
+3. Create `run_adapter.py` CLI entry point
+4. Add task templates in `template/`
+5. Add README.md with documentation
+
+### Adapter Structure
+
+```
+adapters/my-benchmark/
+├── adapter.py          # Main conversion logic
+├── run_adapter.py      # CLI entry point
+├── README.md           # Documentation
+└── template/           # Task template files
+    ├── environment/
+    │   └── Dockerfile
+    ├── tests/
+    │   └── test.sh
+    ├── task.toml
+    └── instruction.md
+```
+
+### Example Adapter
+
+```python
+# adapter.py
+from harbor.dataset import BaseAdapter
+
+class MyBenchmarkAdapter(BaseAdapter):
+    def load_dataset(self):
+        # Load your dataset
+        pass
+    
+    def create_task(self, instance):
+        # Convert instance to Harbor task format
+        pass
+```
+
+See the [adapter development guide](/customize/adapters) for detailed instructions.
+
+## Benchmark Registry
+
+Harbor maintains a centralized registry of datasets in `registry.json`. Each entry includes:
+
+- **name** - Dataset identifier
+- **version** - Dataset version
+- **description** - What the benchmark evaluates
+- **tasks** - List of tasks with git URLs and paths
+
+To add a benchmark to the registry:
+
+1. Run your adapter to generate tasks
+2. Push tasks to the harbor-datasets repository
+3. Update `registry.json` with task metadata
+4. Submit a pull request
+
+## Difficulty Levels
+
+| Level | Description | Example Benchmarks |
+|-------|-------------|--------------------|
+| **Easy** | Simple tasks, clear solutions | HumanEvalFix, SimpleQA |
+| **Medium** | Moderate complexity, some ambiguity | Aider Polyglot, CompileBench |
+| **Hard** | Complex multi-step tasks | SWE-Bench, USACO, BIRD |
+| **Very Hard** | Requires expert knowledge | AIME, GPQA Diamond, ReplicationBench |
+
+## Performance Metrics
+
+Each benchmark reports different metrics depending on the task type:
+
+- **Pass Rate** - Percentage of tasks solved correctly
+- **Partial Credit** - Scores between 0 and 1 for partial solutions
+- **Test Pass Rate** - Percentage of test cases passed
+- **Cost** - Total API cost in USD
+- **Time** - Average time per task
+- **Token Usage** - Input/output tokens consumed
+
+## Benchmark Selection Guide
+
+**For general coding ability:**
+- Aider Polyglot (multi-language)
+- HumanEvalFix (bug fixing)
+- LiveCodeBench (recent problems)
+
+**For real-world software engineering:**
+- SWE-Bench (repository tasks)
+- DevEval (development workflows)
+
+**For ML model development:**
+- ML-Gym Bench (end-to-end ML)
+- ReplicationBench (research reproduction)
+
+**For mathematical reasoning:**
+- AIME (competition math)
+- GPQA Diamond (graduate-level)
+- USACO (algorithmic)
+
+**For multi-modal tasks:**
+- MMAU (vision + text)
+- GAIA (real-world assistant)
+
+**For domain expertise:**
+- FinanceAgent (finance)
+- LawBench (legal)
+- CodePDE (scientific computing)

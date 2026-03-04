@@ -1,0 +1,400 @@
+---
+title: Supported Environments
+description: Complete list of execution environments supported by Harbor
+---
+
+Harbor supports multiple execution environment providers, allowing you to run agent evaluations locally or in the cloud with different resource configurations.
+
+## Environment Providers
+
+<CardGroup cols={2}>
+  <Card title="Docker" icon="docker">
+    **Type:** Local Execution
+    
+    **GPU Support:** Yes (with NVIDIA runtime)
+    
+    **Network Isolation:** Yes
+    
+    **Default:** Yes
+    
+    Run evaluations in local Docker containers with full isolation and resource control.
+    
+    **Key Features:**
+    - Local execution on your machine
+    - Full Docker Compose support
+    - GPU passthrough with NVIDIA runtime
+    - Network isolation for security testing
+    - Volume mounting for workspace access
+    - Build caching for faster iteration
+  </Card>
+
+  <Card title="Daytona" icon="cloud">
+    **Type:** Cloud Execution
+    
+    **GPU Support:** Yes
+    
+    **Network Isolation:** Yes
+    
+    **Default:** No
+    
+    Execute evaluations in Daytona cloud sandboxes with on-demand scaling.
+    
+    **Key Features:**
+    - Cloud-based execution
+    - Automatic scaling
+    - Snapshot support for faster startup
+    - Custom resource allocation (CPU, memory, disk, GPU)
+    - Managed cleanup and lifecycle
+    - Session persistence
+  </Card>
+
+  <Card title="E2B" icon="cube">
+    **Type:** Cloud Execution
+    
+    **GPU Support:** No
+    
+    **Network Isolation:** No
+    
+    **Default:** No
+    
+    Run evaluations in E2B cloud sandboxes with fast provisioning.
+    
+    **Key Features:**
+    - Cloud-based sandboxes
+    - Fast provisioning
+    - Template-based environments
+    - Automatic timeout handling
+    - File upload/download
+    - Pre-built Docker support
+  </Card>
+
+  <Card title="Modal" icon="bolt">
+    **Type:** Cloud Execution
+    
+    **GPU Support:** Yes
+    
+    **Network Isolation:** Yes
+    
+    **Default:** No
+    
+    Execute in Modal cloud sandboxes with GPU support and custom configurations.
+    
+    **Key Features:**
+    - Serverless execution
+    - GPU support with custom types
+    - Network egress control
+    - Custom CPU and memory allocation
+    - Volume mounting
+    - Secrets management
+  </Card>
+
+  <Card title="Runloop" icon="repeat">
+    **Type:** Cloud Execution
+    
+    **GPU Support:** No
+    
+    **Network Isolation:** No
+    
+    **Default:** No
+    
+    Run evaluations in Runloop cloud environments.
+    
+    **Key Features:**
+    - Cloud-based execution
+    - Managed infrastructure
+    - API-based control
+  </Card>
+
+  <Card title="GKE" icon="google">
+    **Type:** Cloud Execution (Kubernetes)
+    
+    **GPU Support:** Yes
+    
+    **Network Isolation:** Yes
+    
+    **Default:** No
+    
+    Execute on Google Kubernetes Engine for enterprise-scale evaluations.
+    
+    **Key Features:**
+    - Kubernetes-based orchestration
+    - Enterprise-grade scaling
+    - GPU support
+    - Custom resource scheduling
+    - Network policies
+  </Card>
+</CardGroup>
+
+## Feature Comparison
+
+| Feature | Docker | Daytona | E2B | Modal | Runloop | GKE |
+|---------|--------|---------|-----|-------|---------|-----|
+| **GPU Support** | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| **Network Isolation** | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| **Local Execution** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Cloud Scaling** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Snapshots** | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Workspace Mounting** | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| **Custom Resources** | Limited | ✅ | Limited | ✅ | Limited | ✅ |
+
+## Usage
+
+### Docker (Default)
+
+Docker is the default environment and requires no additional configuration:
+
+```bash
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1
+```
+
+### Daytona Cloud
+
+To use Daytona, set your API key and specify the environment:
+
+```bash
+export DAYTONA_API_KEY=your-api-key
+
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --environment daytona \
+  --n-concurrent 100
+```
+
+**Daytona-Specific Options:**
+- Custom resources via environment config
+- Snapshot support for faster restarts
+- Automatic cleanup after trials
+
+### E2B Sandboxes
+
+Configure E2B with your API key:
+
+```bash
+export E2B_API_KEY=your-api-key
+
+harbor run \
+  --dataset swebench@lite \
+  --agent openhands \
+  --model anthropic/claude-sonnet-4 \
+  --environment e2b
+```
+
+**E2B-Specific Features:**
+- Template-based provisioning
+- Fast startup times
+- Automatic timeout handling
+
+### Modal Serverless
+
+Use Modal for GPU-accelerated evaluations:
+
+```bash
+export MODAL_TOKEN_ID=your-token-id
+export MODAL_TOKEN_SECRET=your-token-secret
+
+harbor run \
+  --dataset mlgym-bench@full \
+  --agent terminus \
+  --model anthropic/claude-sonnet-4 \
+  --environment modal \
+  --gpu A100
+```
+
+**Modal-Specific Options:**
+- GPU types: A100, T4, A10G, etc.
+- Custom CPU/memory configurations
+- Network egress control
+
+### GKE (Kubernetes)
+
+For enterprise deployments on Google Kubernetes Engine:
+
+```bash
+harbor run \
+  --dataset compilebench@full \
+  --agent codex \
+  --model openai/o1 \
+  --environment gke \
+  --n-concurrent 1000
+```
+
+## Environment Configuration
+
+Each task can specify environment requirements in `task.toml`:
+
+```toml
+[environment]
+max_cpu = 4.0
+max_memory_gb = 16.0
+disk_size_gb = 50
+gpu = "A100"
+network_access = false
+```
+
+### Resource Limits
+
+<AccordionGroup>
+  <Accordion title="CPU and Memory">
+    ```toml
+    [environment]
+    max_cpu = 8.0        # CPU cores
+    max_memory_gb = 32.0 # RAM in GB
+    ```
+    
+    Supported by: Daytona, Modal, GKE
+  </Accordion>
+
+  <Accordion title="Disk Space">
+    ```toml
+    [environment]
+    disk_size_gb = 100  # Disk size in GB
+    ```
+    
+    Supported by: Daytona, Modal, GKE
+  </Accordion>
+
+  <Accordion title="GPU Configuration">
+    ```toml
+    [environment]
+    gpu = "A100"        # GPU type
+    gpu_count = 2       # Number of GPUs
+    ```
+    
+    Supported by: Docker (NVIDIA), Daytona, Modal, GKE
+  </Accordion>
+
+  <Accordion title="Network Isolation">
+    ```toml
+    [environment]
+    network_access = false  # Disable internet
+    ```
+    
+    Supported by: Docker, Daytona, Modal, GKE
+  </Accordion>
+</AccordionGroup>
+
+## Environment Variables
+
+### Docker
+
+- `DOCKER_HOST` - Docker daemon socket
+- `DOCKER_BUILDKIT` - Enable BuildKit (recommended)
+
+### Daytona
+
+- `DAYTONA_API_KEY` - Authentication key (required)
+- `DAYTONA_TARGET` - Target deployment
+
+### E2B
+
+- `E2B_API_KEY` - Authentication key (required)
+
+### Modal
+
+- `MODAL_TOKEN_ID` - Token ID (required)
+- `MODAL_TOKEN_SECRET` - Token secret (required)
+
+### GKE
+
+- `GOOGLE_APPLICATION_CREDENTIALS` - Service account JSON path
+- `GKE_PROJECT_ID` - GCP project ID
+- `GKE_CLUSTER_NAME` - Kubernetes cluster name
+- `GKE_ZONE` - Cluster zone
+
+## Adding a New Environment
+
+To add a custom environment provider:
+
+1. Create a new file in `src/harbor/environments/{env_name}.py`
+2. Extend `BaseEnvironment`
+3. Implement required methods:
+   - `start()` - Start the environment
+   - `stop()` - Stop and cleanup
+   - `exec()` - Execute commands
+   - `upload()` / `download()` - File operations
+4. Register in `EnvironmentType` enum
+5. Update `environments/factory.py`
+
+### Example Environment Implementation
+
+```python
+from harbor.environments.base import BaseEnvironment
+from harbor.models.environment_type import EnvironmentType
+
+class MyEnvironment(BaseEnvironment):
+    @staticmethod
+    def type() -> EnvironmentType:
+        return EnvironmentType.MY_ENV
+    
+    async def start(self, force_build: bool = False):
+        # Provision environment
+        pass
+    
+    async def exec(self, command: str, workdir: str | None = None):
+        # Execute command
+        pass
+    
+    async def stop(self, delete: bool = True):
+        # Cleanup
+        pass
+```
+
+See the [environment development guide](/customize/environments) for detailed instructions.
+
+## Performance Considerations
+
+### Local vs Cloud
+
+**Use Docker when:**
+- Developing and testing tasks locally
+- Running small-scale evaluations
+- Need immediate feedback
+- Have local GPU resources
+
+**Use Cloud when:**
+- Running large-scale evaluations (100+ concurrent trials)
+- Need specific GPU types
+- Want automatic scaling
+- Require consistent environments across team
+
+### Cost Optimization
+
+1. **Use snapshots** (Daytona) for repeated evaluations
+2. **Enable build caching** to avoid rebuilding images
+3. **Right-size resources** - don't over-provision CPU/memory
+4. **Batch evaluations** to amortize startup costs
+5. **Clean up** stopped environments promptly
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Docker: Build failures">
+    - Ensure Docker daemon is running
+    - Check Dockerfile syntax
+    - Verify base images are accessible
+    - Enable BuildKit for better caching
+  </Accordion>
+
+  <Accordion title="Cloud: Authentication errors">
+    - Verify API keys are set correctly
+    - Check key permissions and quotas
+    - Ensure network access to provider APIs
+  </Accordion>
+
+  <Accordion title="GPU: Not detected">
+    - Verify NVIDIA runtime is installed (Docker)
+    - Check GPU availability in cloud provider
+    - Confirm GPU type is supported
+  </Accordion>
+
+  <Accordion title="Network: Connection issues">
+    - Check network isolation settings
+    - Verify firewall rules
+    - Confirm required ports are accessible
+  </Accordion>
+</AccordionGroup>

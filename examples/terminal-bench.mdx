@@ -1,0 +1,247 @@
+---
+title: Running Terminal-Bench evaluations
+description: Learn how to evaluate agents on Terminal-Bench 2.0, the official benchmark for AI coding agents
+---
+
+Terminal-Bench 2.0 is the official benchmark for evaluating AI coding agents, and Harbor is its official harness. This guide shows you how to run Terminal-Bench evaluations locally and in the cloud.
+
+## What is Terminal-Bench?
+
+Terminal-Bench 2.0 is a comprehensive benchmark that evaluates AI agents' ability to:
+- Complete real-world coding tasks
+- Navigate complex software environments
+- Use command-line tools effectively
+- Debug and fix issues autonomously
+
+The benchmark includes diverse tasks across multiple programming languages and domains.
+
+## Quick Start
+
+<Steps>
+  <Step title="Set up your API key">
+    Export your Anthropic API key (or other provider):
+    
+    ```bash
+    export ANTHROPIC_API_KEY=your-api-key-here
+    ```
+  </Step>
+
+  <Step title="Run the evaluation">
+    Execute Terminal-Bench with Claude Code:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 \
+      --agent claude-code \
+      --model anthropic/claude-opus-4-1 \
+      --n-concurrent 4
+    ```
+    
+    This runs the benchmark locally using Docker with 4 parallel tasks.
+  </Step>
+
+  <Step title="Monitor progress">
+    Harbor displays real-time progress:
+    
+    ```
+    Running 250 trials across 1 agent(s) and 250 task(s)
+    Progress: 12/250 (4.8%) | Success: 8/12 (66.7%)
+    ```
+  </Step>
+
+  <Step title="View results">
+    When complete, results are saved to `jobs/<job-id>/`:
+    
+    ```bash
+    harbor view jobs/<job-id>
+    ```
+  </Step>
+</Steps>
+
+## Cloud Execution
+
+For faster evaluation at scale, run on cloud providers like Daytona:
+
+```bash
+export ANTHROPIC_API_KEY=your-anthropic-key
+export DAYTONA_API_KEY=your-daytona-key
+
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --n-concurrent 100 \
+  --env daytona
+```
+
+<Note>
+  Cloud execution allows you to run 100+ tasks in parallel, dramatically reducing evaluation time.
+</Note>
+
+## Configuration Options
+
+### Agent Selection
+
+Evaluate different agents on Terminal-Bench:
+
+```bash
+# OpenHands
+harbor run -d terminal-bench@2.0 -a openhands -m anthropic/claude-opus-4-1
+
+# Aider
+harbor run -d terminal-bench@2.0 -a aider -m anthropic/claude-opus-4-1
+
+# Goose
+harbor run -d terminal-bench@2.0 -a goose -m anthropic/claude-opus-4-1
+```
+
+### Task Filtering
+
+Run a subset of tasks:
+
+```bash
+# Run first 10 tasks only
+harbor run -d terminal-bench@2.0 -a claude-code -m anthropic/claude-opus-4-1 --max-tasks 10
+
+# Run specific task by ID
+harbor trials start -p path/to/terminal-bench/task-id -a claude-code -m anthropic/claude-opus-4-1
+```
+
+### Timeout Configuration
+
+```bash
+# Increase agent timeout to 30 minutes
+harbor run -d terminal-bench@2.0 \
+  -a claude-code \
+  -m anthropic/claude-opus-4-1 \
+  --agent-timeout-multiplier 2.0
+```
+
+### Multiple Attempts
+
+Run multiple attempts per task for statistical significance:
+
+```bash
+harbor run -d terminal-bench@2.0 \
+  -a claude-code \
+  -m anthropic/claude-opus-4-1 \
+  --attempts 3
+```
+
+## Understanding Results
+
+After evaluation completes, Harbor generates comprehensive results:
+
+### Job Summary
+
+```json
+{
+  "id": "job-abc123",
+  "status": "completed",
+  "stats": {
+    "total_trials": 250,
+    "completed": 250,
+    "success_rate": 0.68,
+    "mean_reward": 0.68,
+    "total_cost": 45.32
+  }
+}
+```
+
+### Per-Task Results
+
+Each task generates a `trial_result.json`:
+
+```json
+{
+  "reward": 1.0,
+  "status": "completed",
+  "timing": {
+    "agent_time_sec": 145.2,
+    "verifier_time_sec": 8.1
+  },
+  "usage_info": {
+    "prompt_tokens": 12500,
+    "completion_tokens": 3200,
+    "total_cost": 0.18
+  }
+}
+```
+
+### Viewing Traces
+
+View agent trajectories in the web UI:
+
+```bash
+harbor view jobs/<job-id>
+```
+
+Or export to ATIF format for analysis:
+
+```bash
+harbor traces export jobs/<job-id> --output traces.jsonl
+```
+
+## Performance Benchmarks
+
+Typical execution times for Terminal-Bench 2.0 (250 tasks):
+
+| Environment | Concurrency | Time | Cost (Claude Opus) |
+|-------------|-------------|------|--------------------|
+| Local Docker | 4 | ~18 hours | ~$50 |
+| Local Docker | 16 | ~5 hours | ~$50 |
+| Daytona | 50 | ~2 hours | ~$50 + compute |
+| Daytona | 100 | ~1 hour | ~$50 + compute |
+| Modal | 100 | ~1 hour | ~$50 + compute |
+
+<Tip>
+  Start with a small subset (10-20 tasks) to validate your setup before running the full benchmark.
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Docker build timeouts">
+    Increase build timeout:
+    
+    ```bash
+    harbor run -d terminal-bench@2.0 \
+      --build-timeout-multiplier 2.0 \
+      -a claude-code -m anthropic/claude-opus-4-1
+    ```
+  </Accordion>
+
+  <Accordion title="Rate limit errors">
+    Reduce concurrency or add delays:
+    
+    ```bash
+    harbor run -d terminal-bench@2.0 \
+      --n-concurrent 2 \
+      -a claude-code -m anthropic/claude-opus-4-1
+    ```
+  </Accordion>
+
+  <Accordion title="Out of disk space">
+    Clean up Docker resources:
+    
+    ```bash
+    harbor cache clean --all
+    docker system prune -a
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SWE-Bench" icon="code" href="/examples/swe-bench">
+    Run software engineering benchmarks
+  </Card>
+  <Card title="Custom Benchmark" icon="flask" href="/examples/custom-benchmark">
+    Create your own benchmark
+  </Card>
+  <Card title="RL Optimization" icon="brain" href="/examples/rl-optimization">
+    Generate rollouts for RL training
+  </Card>
+  <Card title="Parameter Sweeps" icon="sliders" href="/examples/parameter-sweeps">
+    Optimize agent parameters
+  </Card>
+</CardGroup>

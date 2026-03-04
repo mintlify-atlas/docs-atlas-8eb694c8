@@ -1,0 +1,410 @@
+---
+title: Implementing custom metrics
+description: Create custom metrics to track and aggregate trial results in Harbor
+---
+
+Harbor's metric system allows you to define custom aggregation functions for evaluating agent performance beyond simple success rates. This guide shows you how to implement and use custom metrics.
+
+## Overview
+
+Custom metrics enable:
+- **Domain-specific evaluation**: Track metrics relevant to your use case
+- **Partial credit**: Reward partial success
+- **Multi-dimensional scoring**: Combine multiple criteria
+- **Statistical analysis**: Compute percentiles, distributions, etc.
+
+## Built-in Metrics
+
+Harbor includes several built-in metrics:
+
+| Metric | Description | Use Case |
+|--------|-------------|----------|
+| `mean` | Average of rewards | Default success rate |
+| `sum` | Total of all rewards | Total score across tasks |
+| `min` | Minimum reward | Worst-case performance |
+| `max` | Maximum reward | Best-case performance |
+
+## Creating Custom Metrics
+
+### Method 1: Python Class
+
+Implement the `BaseMetric` interface:
+
+```python title="metrics/custom_metric.py"
+from harbor.metrics.base import BaseMetric
+from typing import Any
+
+class PassAtK(BaseMetric):
+    """Compute pass@k: success if any of k attempts succeeds."""
+    
+    def __init__(self, k: int = 3):
+        super().__init__()
+        self.k = k
+        self.attempts = {}
+    
+    def update(self, task_id: str, reward: float, metadata: dict[str, Any]):
+        """Record a single trial result."""
+        if task_id not in self.attempts:
+            self.attempts[task_id] = []
+        self.attempts[task_id].append(reward)
+    
+    def compute(self) -> float:
+        """Compute pass@k across all tasks."""
+        successes = 0
+        total = 0
+        
+        for task_id, rewards in self.attempts.items():
+            # Consider only first k attempts
+            k_attempts = rewards[:self.k]
+            
+            # Success if any attempt succeeded
+            if max(k_attempts) >= 1.0:
+                successes += 1
+            total += 1
+        
+        return successes / total if total > 0 else 0.0
+    
+    def reset(self):
+        """Reset metric state."""
+        self.attempts = {}
+```
+
+Use in job configuration:
+
+```yaml
+metrics:
+  - type: custom
+    class: metrics.custom_metric.PassAtK
+    kwargs:
+      k: 3
+```
+
+### Method 2: UvScript
+
+For simpler metrics, use inline Python:
+
+```yaml title="job-config.yaml"
+metrics:
+  - type: uv_script
+    name: "median_reward"
+    script: |
+      import statistics
+      rewards = [trial["reward"] for trial in trials if trial["status"] == "completed"]
+      result = statistics.median(rewards) if rewards else 0.0
+```
+
+<Note>
+  UvScript metrics receive a `trials` list with all trial results and must set a `result` variable.
+</Note>
+
+## Example Custom Metrics
+
+### Percentile Metrics
+
+```python
+from harbor.metrics.base import BaseMetric
+import numpy as np
+
+class Percentile(BaseMetric):
+    """Compute specific percentile of rewards."""
+    
+    def __init__(self, percentile: float = 50):
+        super().__init__()
+        self.percentile = percentile
+        self.rewards = []
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        self.rewards.append(reward)
+    
+    def compute(self) -> float:
+        if not self.rewards:
+            return 0.0
+        return float(np.percentile(self.rewards, self.percentile))
+    
+    def reset(self):
+        self.rewards = []
+```
+
+Usage:
+
+```yaml
+metrics:
+  - type: custom
+    class: metrics.percentile.Percentile
+    kwargs:
+      percentile: 95  # P95 score
+```
+
+### Weighted Metrics
+
+```python
+from harbor.metrics.base import BaseMetric
+
+class WeightedAverage(BaseMetric):
+    """Average reward weighted by task difficulty."""
+    
+    def __init__(self):
+        super().__init__()
+        self.weighted_sum = 0.0
+        self.total_weight = 0.0
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        # Get difficulty from metadata
+        difficulty_weights = {
+            "easy": 1.0,
+            "medium": 2.0,
+            "hard": 3.0
+        }
+        
+        difficulty = metadata.get("difficulty", "medium")
+        weight = difficulty_weights.get(difficulty, 1.0)
+        
+        self.weighted_sum += reward * weight
+        self.total_weight += weight
+    
+    def compute(self) -> float:
+        if self.total_weight == 0:
+            return 0.0
+        return self.weighted_sum / self.total_weight
+    
+    def reset(self):
+        self.weighted_sum = 0.0
+        self.total_weight = 0.0
+```
+
+### Cost Efficiency
+
+```python
+from harbor.metrics.base import BaseMetric
+
+class CostEfficiency(BaseMetric):
+    """Compute reward per dollar spent."""
+    
+    def __init__(self):
+        super().__init__()
+        self.total_reward = 0.0
+        self.total_cost = 0.0
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        self.total_reward += reward
+        
+        # Get cost from usage info
+        usage = metadata.get("usage_info", {})
+        self.total_cost += usage.get("total_cost", 0.0)
+    
+    def compute(self) -> float:
+        if self.total_cost == 0:
+            return 0.0
+        return self.total_reward / self.total_cost
+    
+    def reset(self):
+        self.total_reward = 0.0
+        self.total_cost = 0.0
+```
+
+### Time-Based Metrics
+
+```python
+from harbor.metrics.base import BaseMetric
+
+class AverageSuccessTime(BaseMetric):
+    """Average time to solve successful tasks."""
+    
+    def __init__(self):
+        super().__init__()
+        self.success_times = []
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        if reward >= 1.0:  # Only successful trials
+            timing = metadata.get("timing", {})
+            agent_time = timing.get("agent_time_sec", 0)
+            self.success_times.append(agent_time)
+    
+    def compute(self) -> float:
+        if not self.success_times:
+            return 0.0
+        return sum(self.success_times) / len(self.success_times)
+    
+    def reset(self):
+        self.success_times = []
+```
+
+## Multi-Metric Evaluation
+
+Track multiple metrics simultaneously:
+
+```yaml title="job-config.yaml"
+metrics:
+  # Success rate
+  - type: mean
+    name: "success_rate"
+  
+  # Pass@3
+  - type: custom
+    class: metrics.custom_metric.PassAtK
+    kwargs:
+      k: 3
+  
+  # 95th percentile
+  - type: custom
+    class: metrics.percentile.Percentile
+    kwargs:
+      percentile: 95
+  
+  # Cost efficiency
+  - type: custom
+    class: metrics.efficiency.CostEfficiency
+  
+  # Median time
+  - type: uv_script
+    name: "median_time"
+    script: |
+      import statistics
+      times = [t["timing"]["agent_time_sec"] 
+               for t in trials 
+               if t["status"] == "completed"]
+      result = statistics.median(times) if times else 0.0
+```
+
+Access results:
+
+```python
+import json
+
+job_result = json.load(open("jobs/<job-id>/job_result.json"))
+
+print("Metrics:")
+for metric_name, value in job_result["metrics"].items():
+    print(f"  {metric_name}: {value:.3f}")
+```
+
+Output:
+```
+Metrics:
+  success_rate: 0.682
+  pass_at_3: 0.724
+  p95: 0.950
+  cost_efficiency: 1.523
+  median_time: 142.5
+```
+
+## Category-Specific Metrics
+
+Track metrics per category:
+
+```python
+from harbor.metrics.base import BaseMetric
+from collections import defaultdict
+
+class CategorySuccessRate(BaseMetric):
+    """Success rate broken down by task category."""
+    
+    def __init__(self):
+        super().__init__()
+        self.categories = defaultdict(lambda: {"total": 0, "success": 0})
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        category = metadata.get("category", "unknown")
+        self.categories[category]["total"] += 1
+        if reward >= 1.0:
+            self.categories[category]["success"] += 1
+    
+    def compute(self) -> dict[str, float]:
+        """Return dict of category -> success rate."""
+        results = {}
+        for category, counts in self.categories.items():
+            results[category] = counts["success"] / counts["total"]
+        return results
+    
+    def reset(self):
+        self.categories = defaultdict(lambda: {"total": 0, "success": 0})
+```
+
+## Best Practices
+
+1. **Handle edge cases**: Empty trials, missing metadata, etc.
+2. **Reset properly**: Clear state between jobs
+3. **Document behavior**: Explain what your metric measures
+4. **Type hints**: Use proper type annotations
+5. **Test thoroughly**: Validate on sample data first
+6. **Consider efficiency**: Avoid expensive computations in `update()`
+7. **Return appropriate types**: Float for scalar, dict for breakdowns
+
+## Debugging Metrics
+
+Test metric implementation:
+
+```python
+from metrics.custom_metric import PassAtK
+
+# Create metric
+metric = PassAtK(k=3)
+
+# Simulate trial results
+metric.update("task-1", reward=0.0, metadata={})
+metric.update("task-1", reward=0.0, metadata={})
+metric.update("task-1", reward=1.0, metadata={})
+
+metric.update("task-2", reward=0.0, metadata={})
+metric.update("task-2", reward=0.0, metadata={})
+metric.update("task-2", reward=0.0, metadata={})
+
+# Compute
+result = metric.compute()
+print(f"Pass@3: {result}")  # Should be 0.5 (1 out of 2 tasks)
+
+assert result == 0.5, f"Expected 0.5, got {result}"
+```
+
+## Advanced: Confidence Intervals
+
+```python
+from harbor.metrics.base import BaseMetric
+import numpy as np
+from scipy import stats
+
+class MeanWithCI(BaseMetric):
+    """Mean with 95% confidence interval."""
+    
+    def __init__(self):
+        super().__init__()
+        self.rewards = []
+    
+    def update(self, task_id: str, reward: float, metadata: dict):
+        self.rewards.append(reward)
+    
+    def compute(self) -> dict:
+        if len(self.rewards) < 2:
+            return {"mean": 0.0, "ci_lower": 0.0, "ci_upper": 0.0}
+        
+        mean = np.mean(self.rewards)
+        sem = stats.sem(self.rewards)  # Standard error
+        ci = stats.t.interval(0.95, len(self.rewards)-1, 
+                              loc=mean, scale=sem)
+        
+        return {
+            "mean": float(mean),
+            "ci_lower": float(ci[0]),
+            "ci_upper": float(ci[1])
+        }
+    
+    def reset(self):
+        self.rewards = []
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Verifiers" icon="check" href="/concepts/verifiers">
+    Learn about reward generation
+  </Card>
+  <Card title="Parameter Sweeps" icon="sliders" href="/examples/parameter-sweeps">
+    Use metrics in sweeps
+  </Card>
+  <Card title="Job Results" icon="chart-bar" href="/api/job-result">
+    Understand result structure
+  </Card>
+  <Card title="BaseMetric API" icon="code" href="/api/metrics">
+    Full metric API reference
+  </Card>
+</CardGroup>

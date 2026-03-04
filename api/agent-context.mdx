@@ -1,0 +1,210 @@
+---
+title: AgentContext
+description: Container for agent execution results and metadata
+---
+
+## Overview
+
+The `AgentContext` class holds execution data from an agent run, including token usage, costs, trajectory details, and custom metadata. Agents populate this object during execution.
+
+**Import:** `from harbor.models.agent.context import AgentContext`
+
+## Fields
+
+<ParamField path="n_input_tokens" type="int | None" default="None">
+  Total number of input tokens used including cache tokens.
+</ParamField>
+
+<ParamField path="n_cache_tokens" type="int | None" default="None">
+  Number of cache tokens used (subset of input tokens).
+</ParamField>
+
+<ParamField path="n_output_tokens" type="int | None" default="None">
+  Total number of output tokens generated.
+</ParamField>
+
+<ParamField path="cost_usd" type="float | None" default="None">
+  Total cost in USD for the agent execution.
+</ParamField>
+
+<ParamField path="rollout_details" type="list[RolloutDetail] | None" default="None">
+  Detailed information about each rollout trajectory including token IDs, loss masks, and logprobs. Each element represents one trajectory. For a linear chat history, there is only one rollout trajectory.
+</ParamField>
+
+<ParamField path="metadata" type="dict[str, Any] | None" default="None">
+  Additional metadata about the agent execution. Use this for custom tracking data.
+</ParamField>
+
+## Methods
+
+### is_empty
+
+```python
+def is_empty(self) -> bool
+```
+
+Checks if the context has any non-None values.
+
+<ResponseField name="is_empty" type="bool">
+  True if all fields are None, False otherwise.
+</ResponseField>
+
+## RolloutDetail Type
+
+The `RolloutDetail` TypedDict contains detailed trajectory information for reinforcement learning and analysis:
+
+```python
+class RolloutDetail(TypedDict, total=False):
+    prompt_token_ids: list[list[int]]
+    completion_token_ids: list[list[int]]
+    logprobs: list[list[float]]
+```
+
+<ParamField path="prompt_token_ids" type="list[list[int]]">
+  Each element contains full prompt token IDs for that turn, including previous chat history if applicable.
+</ParamField>
+
+<ParamField path="completion_token_ids" type="list[list[int]]">
+  Each element contains response token IDs for that turn.
+</ParamField>
+
+<ParamField path="logprobs" type="list[list[float]]">
+  Each element contains logprobs corresponding to completion_token_ids for that turn.
+</ParamField>
+
+## Usage Examples
+
+### Basic Token Tracking
+
+```python
+from harbor.models.agent.context import AgentContext
+
+context = AgentContext()
+
+# Populate during agent execution
+context.n_input_tokens = 1500
+context.n_cache_tokens = 800
+context.n_output_tokens = 600
+context.cost_usd = 0.025
+
+print(f"Total cost: ${context.cost_usd}")
+print(f"Cache hit rate: {context.n_cache_tokens / context.n_input_tokens:.1%}")
+```
+
+### Adding Custom Metadata
+
+```python
+context = AgentContext()
+
+context.metadata = {
+    "model_version": "claude-opus-4-1",
+    "n_tool_calls": 15,
+    "execution_phases": ["planning", "coding", "testing"],
+    "custom_metric": 0.85
+}
+```
+
+### With Rollout Details for RL
+
+```python
+from harbor.models.agent.context import AgentContext
+from harbor.models.agent.rollout_detail import RolloutDetail
+
+context = AgentContext()
+
+# For agents with linear chat history
+rollout: RolloutDetail = {
+    "prompt_token_ids": [
+        [101, 2023, 2003],  # Turn 1 prompt
+        [101, 2023, 2003, 2009],  # Turn 2 prompt (includes history)
+    ],
+    "completion_token_ids": [
+        [2009, 2003, 102],  # Turn 1 completion
+        [2025, 2026, 102],  # Turn 2 completion
+    ],
+    "logprobs": [
+        [-0.5, -0.3, -0.1],  # Turn 1 logprobs
+        [-0.4, -0.2, -0.15],  # Turn 2 logprobs
+    ]
+}
+
+context.rollout_details = [rollout]
+
+# For agents with multiple trajectories (e.g., tree search, subagents)
+context.rollout_details = [
+    main_trajectory,
+    subagent_trajectory_1,
+    subagent_trajectory_2,
+]
+```
+
+### Checking Context State
+
+```python
+context = AgentContext()
+
+if context.is_empty():
+    print("No execution data collected")
+else:
+    print(f"Context has data: {context.model_dump(exclude_none=True)}")
+```
+
+### In Agent Implementation
+
+```python
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class MyAgent(BaseAgent):
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        # Execute agent logic...
+        result = await self._execute_task(instruction)
+        
+        # Populate context with execution data
+        context.n_input_tokens = result.input_tokens
+        context.n_output_tokens = result.output_tokens
+        context.cost_usd = self._calculate_cost(result)
+        context.metadata = {
+            "success": result.success,
+            "steps_taken": result.steps,
+            "files_modified": len(result.modified_files),
+        }
+        
+        # Add trajectory data if available
+        if self.SUPPORTS_ATIF and result.trajectory:
+            context.rollout_details = [result.trajectory]
+```
+
+## Serialization
+
+AgentContext is a Pydantic model and supports JSON serialization:
+
+```python
+context = AgentContext(
+    n_input_tokens=1000,
+    n_output_tokens=500,
+    cost_usd=0.02,
+    metadata={"agent": "claude-code", "version": "1.0"}
+)
+
+# Serialize to JSON
+json_str = context.model_dump_json()
+
+# Deserialize from JSON
+loaded_context = AgentContext.model_validate_json(json_str)
+
+# Export only non-None fields
+data = context.model_dump(exclude_none=True)
+```
+
+## Related Types
+
+- [BaseAgent](/api/base-agent) - Agent interface that populates AgentContext
+- [TrialResult](/api/trial-result) - Contains AgentContext as agent_result field
+- [RolloutDetail](/api/agent-context#rolloutdetail-type) - Trajectory data structure

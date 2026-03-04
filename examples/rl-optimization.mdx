@@ -1,0 +1,378 @@
+---
+title: RL optimization with Harbor
+description: Generate rollouts and trajectories for reinforcement learning optimization of AI agents
+---
+
+Harbor can generate high-quality rollouts in ATIF (Agent Trajectory Interchange Format) for reinforcement learning optimization of AI agents. This guide shows you how to collect trajectories and use them for RL training.
+
+## Overview
+
+RL optimization with Harbor involves:
+
+1. **Trajectory collection**: Running agents on tasks and recording interactions
+2. **ATIF export**: Converting trajectories to standardized format
+3. **Reward shaping**: Using task verifiers to provide learning signals
+4. **Training**: Using trajectories to fine-tune agent models
+
+<Note>
+  Harbor focuses on trajectory generation. You'll need an RL training framework (e.g., PPO, DPO) to train models.
+</Note>
+
+## ATIF Format
+
+The Agent Trajectory Interchange Format (ATIF) is Harbor's standard for representing agent interactions:
+
+```json
+{
+  "task_id": "fibonacci-001",
+  "agent": "claude-code",
+  "model": "anthropic/claude-opus-4-1",
+  "reward": 1.0,
+  "trajectory": [
+    {
+      "step": 0,
+      "action": {
+        "type": "execute",
+        "command": "cat instruction.md"
+      },
+      "observation": {
+        "stdout": "Write a function fibonacci(n)...",
+        "exit_code": 0
+      }
+    },
+    {
+      "step": 1,
+      "action": {
+        "type": "write_file",
+        "path": "fibonacci.py",
+        "content": "def fibonacci(n):\n    ..."
+      },
+      "observation": {
+        "success": true
+      }
+    }
+  ],
+  "metadata": {
+    "total_steps": 15,
+    "completion_time_sec": 142.5,
+    "tokens_used": 3420
+  }
+}
+```
+
+## Collecting Trajectories
+
+### Agent Support
+
+Only agents with ATIF support can generate trajectories:
+
+| Agent | ATIF Support |
+|-------|-------------|
+| Terminus | ✅ |
+| Terminus-1 | ✅ |
+| Terminus-2 | ✅ |
+| Claude Code | ❌ |
+| OpenHands | ❌ |
+| Other installed agents | ❌ |
+
+<Tip>
+  To enable ATIF for custom agents, set `SUPPORTS_ATIF = True` in your agent class and populate the trajectory field in `AgentContext`.
+</Tip>
+
+### Running Data Collection
+
+<Steps>
+  <Step title="Choose an ATIF-compatible agent">
+    ```bash
+    # Use Terminus agent
+    export ANTHROPIC_API_KEY=your-key
+    ```
+  </Step>
+
+  <Step title="Run evaluation">
+    ```bash
+    harbor run --dataset my-benchmark@1.0 \
+      --agent terminus-2 \
+      --model anthropic/claude-opus-4-1 \
+      --n-concurrent 10
+    ```
+    
+    This generates trajectories for all successful and failed attempts.
+  </Step>
+
+  <Step title="Export trajectories">
+    ```bash
+    harbor traces export jobs/<job-id> \
+      --output rollouts.jsonl \
+      --format atif
+    ```
+    
+    Creates a JSONL file with one trajectory per line.
+  </Step>
+</Steps>
+
+### Filtering Trajectories
+
+Export only successful trajectories:
+
+```bash
+harbor traces export jobs/<job-id> \
+  --output successful_rollouts.jsonl \
+  --filter "reward>=1.0"
+```
+
+Export trajectories by difficulty:
+
+```bash
+harbor traces export jobs/<job-id> \
+  --output hard_tasks.jsonl \
+  --filter "difficulty=hard"
+```
+
+## Using Trajectories for RL
+
+### Data Preparation
+
+Load and preprocess trajectories:
+
+```python
+import json
+from pathlib import Path
+
+def load_trajectories(path):
+    """Load ATIF trajectories from JSONL file."""
+    trajectories = []
+    with open(path) as f:
+        for line in f:
+            trajectories.append(json.loads(line))
+    return trajectories
+
+def filter_by_reward(trajectories, min_reward=0.5):
+    """Keep only high-reward trajectories."""
+    return [t for t in trajectories if t["reward"] >= min_reward]
+
+def extract_state_action_pairs(trajectory):
+    """Extract (state, action, reward) tuples."""
+    pairs = []
+    for step in trajectory["trajectory"]:
+        state = step["observation"]
+        action = step["action"]
+        pairs.append((state, action, trajectory["reward"]))
+    return pairs
+
+# Load data
+trajectories = load_trajectories("rollouts.jsonl")
+print(f"Loaded {len(trajectories)} trajectories")
+
+# Filter successful ones
+successful = filter_by_reward(trajectories, min_reward=1.0)
+print(f"Found {len(successful)} successful trajectories")
+
+# Extract training data
+training_data = []
+for traj in successful:
+    training_data.extend(extract_state_action_pairs(traj))
+
+print(f"Generated {len(training_data)} training examples")
+```
+
+### Reward Shaping
+
+Use partial rewards for better learning signals:
+
+```python
+def reshape_rewards(trajectory):
+    """Apply reward shaping to trajectory."""
+    final_reward = trajectory["reward"]
+    num_steps = len(trajectory["trajectory"])
+    
+    # Discount rewards over time
+    gamma = 0.99
+    shaped_trajectory = trajectory.copy()
+    
+    for i, step in enumerate(shaped_trajectory["trajectory"]):
+        # Distance from end
+        steps_remaining = num_steps - i
+        
+        # Shaped reward: discounted final reward
+        step["shaped_reward"] = final_reward * (gamma ** steps_remaining)
+    
+    return shaped_trajectory
+```
+
+### Training with PPO
+
+Example using a hypothetical PPO trainer:
+
+```python
+from rl_trainer import PPOTrainer, AgentPolicy
+
+# Initialize policy
+policy = AgentPolicy(
+    model_name="base-agent-model",
+    action_space="file_operations"
+)
+
+# Create trainer
+trainer = PPOTrainer(
+    policy=policy,
+    learning_rate=3e-4,
+    batch_size=32,
+    num_epochs=10
+)
+
+# Load trajectories
+trajectories = load_trajectories("rollouts.jsonl")
+
+# Train
+for epoch in range(10):
+    # Sample batch
+    batch = sample_trajectories(trajectories, batch_size=32)
+    
+    # Compute advantages
+    advantages = compute_advantages(batch)
+    
+    # Update policy
+    loss = trainer.train_step(batch, advantages)
+    print(f"Epoch {epoch}: Loss = {loss:.4f}")
+
+# Save optimized policy
+policy.save("optimized-agent")
+```
+
+## Advanced Techniques
+
+### Multi-Task Training
+
+Collect diverse trajectories:
+
+```bash
+# Run on multiple benchmarks
+harbor run -d terminal-bench@2.0 -a terminus-2 -m anthropic/claude-opus-4-1
+harbor run -d swebench-verified -a terminus-2 -m anthropic/claude-opus-4-1
+harbor run -d aider-polyglot -a terminus-2 -m anthropic/claude-opus-4-1
+
+# Export all
+harbor traces export jobs/<job-1> --output tb.jsonl
+harbor traces export jobs/<job-2> --output sweb.jsonl
+harbor traces export jobs/<job-3> --output aider.jsonl
+
+# Combine
+cat tb.jsonl sweb.jsonl aider.jsonl > all_trajectories.jsonl
+```
+
+### Curriculum Learning
+
+Start with easy tasks, progress to harder:
+
+```python
+def curriculum_training(policy, easy_trajectories, hard_trajectories):
+    # Phase 1: Easy tasks
+    print("Training on easy tasks...")
+    for epoch in range(5):
+        train_epoch(policy, easy_trajectories)
+    
+    # Phase 2: Mix easy and hard
+    print("Training on mixed difficulty...")
+    mixed = easy_trajectories + hard_trajectories[:len(easy_trajectories)]
+    for epoch in range(5):
+        train_epoch(policy, mixed)
+    
+    # Phase 3: All tasks
+    print("Training on all tasks...")
+    all_trajectories = easy_trajectories + hard_trajectories
+    for epoch in range(10):
+        train_epoch(policy, all_trajectories)
+```
+
+### Behavior Cloning
+
+Learn from expert demonstrations:
+
+```python
+def behavior_cloning(policy, expert_trajectories):
+    """Train policy to imitate expert behavior."""
+    optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
+    
+    for trajectory in expert_trajectories:
+        for step in trajectory["trajectory"]:
+            state = encode_state(step["observation"])
+            action = encode_action(step["action"])
+            
+            # Predict action
+            predicted_action = policy(state)
+            
+            # Supervised loss
+            loss = F.cross_entropy(predicted_action, action)
+            
+            # Update
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+```
+
+## Evaluation
+
+Validate improved agent:
+
+```bash
+# Run optimized agent
+harbor run -d terminal-bench@2.0 \
+  -a my-optimized-agent \
+  -m path/to/optimized-model \
+  --n-concurrent 10
+
+# Compare to baseline
+harbor jobs summarize <baseline-job-id>
+harbor jobs summarize <optimized-job-id>
+```
+
+Generate comparison report:
+
+```python
+import json
+
+baseline = json.load(open("jobs/<baseline>/job_result.json"))
+optimized = json.load(open("jobs/<optimized>/job_result.json"))
+
+print("Baseline Success Rate:", baseline["stats"]["mean_reward"])
+print("Optimized Success Rate:", optimized["stats"]["mean_reward"])
+print("Improvement:", optimized["stats"]["mean_reward"] - baseline["stats"]["mean_reward"])
+```
+
+## Best Practices
+
+1. **Collect diverse data**: Use multiple benchmarks and task types
+2. **Balance dataset**: Include successful and failed trajectories
+3. **Validate continuously**: Test on held-out tasks
+4. **Start simple**: Begin with behavior cloning before RL
+5. **Monitor overfitting**: Track validation performance
+6. **Use partial rewards**: Better learning signals than binary
+7. **Version control**: Track model checkpoints and data
+
+## Limitations
+
+<Warning>
+  Current limitations:
+  - Only Terminus agents support ATIF natively
+  - Trajectory size can be large (100KB+ per task)
+  - RL training requires significant compute
+  - Agent improvements may not generalize to new domains
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Agents" icon="robot" href="/guides/custom-agents">
+    Add ATIF support to your agent
+  </Card>
+  <Card title="Parameter Sweeps" icon="sliders" href="/examples/parameter-sweeps">
+    Optimize hyperparameters
+  </Card>
+  <Card title="Agent Context" icon="brain" href="/api/agent-context">
+    Learn about AgentContext
+  </Card>
+  <Card title="Verifiers" icon="check" href="/concepts/verifiers">
+    Design better reward functions
+  </Card>
+</CardGroup>

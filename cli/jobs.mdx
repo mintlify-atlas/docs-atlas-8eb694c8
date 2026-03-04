@@ -1,0 +1,215 @@
+---
+title: harbor jobs
+description: Manage and execute evaluation jobs
+---
+
+The `harbor jobs` command group provides commands for managing evaluation jobs. Jobs orchestrate the execution of multiple trials across agents, tasks, and attempts.
+
+## Commands
+
+### harbor jobs start
+
+Start a new evaluation job. This is the same as the `harbor run` command.
+
+```bash
+harbor jobs start [OPTIONS]
+```
+
+See [harbor run](/cli/run) for detailed documentation and all available options.
+
+### harbor jobs resume
+
+Resume an existing job from its job directory.
+
+```bash
+harbor jobs resume --job-path <PATH> [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="-p, --job-path" type="Path" required>
+  Path to the job directory containing the `config.json` file.
+</ParamField>
+
+<ParamField path="-f, --filter-error-type" type="list[string]">
+  Remove trials with these error types before resuming. Can be used multiple times.
+  
+  Default: `["CancelledError"]`
+</ParamField>
+
+#### Examples
+
+Resume a job that was interrupted:
+
+```bash
+harbor jobs resume --job-path ~/.cache/harbor/jobs/my-job-20260303-120000
+```
+
+Resume a job and filter out timeout errors:
+
+```bash
+harbor jobs resume \
+  --job-path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter-error-type AgentTimeoutError \
+  --filter-error-type VerifierTimeoutError
+```
+
+#### How It Works
+
+1. Loads the job configuration from `config.json` in the job directory
+2. Optionally removes trial directories matching specified error types
+3. Re-runs the job, skipping trials that already have results
+4. Displays results tables upon completion
+
+### harbor jobs summarize
+
+Summarize trial failures in a job using Claude Agent SDK.
+
+```bash
+harbor jobs summarize <JOB_PATH> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="JOB_PATH" type="Path" required>
+  Path to a job directory or a parent directory containing multiple job subdirectories.
+</ParamField>
+
+#### Options
+
+<ParamField path="-n, --n-concurrent" type="int">
+  Maximum number of concurrent summarization queries. Default: `5`
+</ParamField>
+
+<ParamField path="-m, --model" type="string">
+  Model to use for summarization (e.g., `haiku`, `sonnet`, `opus`). Default: `haiku`
+</ParamField>
+
+<ParamField path="--all/--failed" type="boolean">
+  Analyze all trials or only failed trials. Default: `--failed` (only failed trials are analyzed)
+</ParamField>
+
+<ParamField path="--overwrite" type="boolean">
+  Overwrite existing `summary.md` files. Default: `false` (skip trials with existing summaries)
+</ParamField>
+
+#### Examples
+
+Summarize failures in a single job:
+
+```bash
+harbor jobs summarize ~/.cache/harbor/jobs/my-job-20260303-120000
+```
+
+Summarize all trials (including successes):
+
+```bash
+harbor jobs summarize \
+  ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --all
+```
+
+Summarize multiple jobs in a directory:
+
+```bash
+harbor jobs summarize ~/.cache/harbor/jobs/ --model sonnet
+```
+
+Force regenerate summaries:
+
+```bash
+harbor jobs summarize \
+  ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --overwrite
+```
+
+#### Output
+
+The command generates:
+- Individual `summary.md` files in each trial directory
+- A top-level `summary.md` in the job directory (for multi-job summarization)
+- Analysis of failures, common patterns, and potential fixes
+
+## Job Directory Structure
+
+A typical job directory structure:
+
+```
+~/.cache/harbor/jobs/my-job-20260303-120000/
+├── config.json          # Job configuration
+├── result.json          # Job results and statistics
+├── summary.md           # Generated summary (if using summarize)
+├── task1__agent__model__attempt-1/
+│   ├── result.json      # Trial result
+│   ├── trajectory.json  # Agent trajectory (if supported)
+│   ├── logs/            # Agent and environment logs
+│   └── summary.md       # Trial summary (if using summarize)
+├── task1__agent__model__attempt-2/
+│   └── ...
+└── task2__agent__model__attempt-1/
+    └── ...
+```
+
+## Job Configuration
+
+The `config.json` file contains the complete job configuration in the `JobConfig` schema. This includes:
+
+- Agent configurations
+- Environment settings
+- Dataset/task specifications
+- Orchestrator settings
+- Timeout multipliers
+- Retry policies
+
+You can inspect this file to understand exactly how a job was configured, and use it as a template for future jobs.
+
+## Job Results
+
+The `result.json` file contains:
+
+- Per-agent, per-dataset statistics
+- Reward distribution
+- Exception statistics
+- Metrics aggregations
+- Trial counts (total, errors, successes)
+
+## Examples
+
+### Resume a Failed Job
+
+If a job was interrupted (e.g., by Ctrl+C or system crash):
+
+```bash
+# Find the job directory
+ls -la ~/.cache/harbor/jobs/
+
+# Resume the job
+harbor jobs resume --job-path ~/.cache/harbor/jobs/my-job-20260303-120000
+```
+
+### Analyze Failures
+
+After running a job, analyze what went wrong:
+
+```bash
+harbor jobs summarize \
+  ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --model sonnet
+```
+
+### Clean Up and Retry
+
+Remove trials with specific errors and resume:
+
+```bash
+# Remove trials with timeout errors
+harbor jobs resume \
+  --job-path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter-error-type AgentTimeoutError
+```
+
+## See Also
+
+- [harbor run](/cli/run) - Start a new job
+- [harbor trials](/cli/trials) - Run individual trials
+- [harbor datasets](/cli/datasets) - Manage datasets

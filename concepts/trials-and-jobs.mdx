@@ -1,0 +1,588 @@
+---
+title: Trials and Jobs
+description: Understanding trial execution and job orchestration in Harbor
+---
+
+## Overview
+
+Harbor organizes evaluations into two hierarchical levels:
+
+- **Trial**: A single execution of one agent on one task
+- **Job**: A collection of multiple trials across agents, tasks, and attempts
+
+This structure enables efficient batch evaluation and experiment management.
+
+## Trials
+
+A **trial** represents one complete attempt by an agent to solve a task.
+
+### Trial Lifecycle
+
+```mermaid
+graph TD
+    A[Start] --> B[Environment Setup]
+    B --> C[Agent Setup]
+    C --> D[Agent Execution]
+    D --> E[Verification]
+    E --> F[Save Results]
+    F --> G[Cleanup]
+    G --> H[End]
+```
+
+### Trial Phases
+
+1. **Environment Setup**: Build and start the execution environment
+2. **Agent Setup**: Install and configure the agent
+3. **Agent Execution**: Run the agent on the task
+4. **Verification**: Grade the agent's solution
+5. **Save Results**: Persist trial results to disk
+6. **Cleanup**: Stop and optionally delete the environment
+
+### Trial Configuration
+
+Trials are configured using the `TrialConfig` model:
+
+```python
+class TrialConfig(BaseModel):
+    task: TaskConfig
+    trials_dir: Path
+    agent: AgentConfig
+    timeout_multiplier: float = 1.0
+    agent_timeout_multiplier: float = 1.0
+    verifier_timeout_multiplier: float = 1.0
+    agent_setup_timeout_multiplier: float = 1.0
+    environment_build_timeout_multiplier: float = 1.0
+    environment: EnvironmentConfig
+    verifier: VerifierConfig
+    artifacts: ArtifactsConfig
+    job_id: UUID
+```
+
+### Timeout Multipliers
+
+Multipliers adjust phase-specific timeouts:
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --timeout-multiplier 2.0 \
+  --agent-timeout-multiplier 1.5
+```
+
+- `timeout_multiplier`: Applies to all phases
+- `agent_timeout_multiplier`: Agent execution only
+- `verifier_timeout_multiplier`: Verification only
+- `agent_setup_timeout_multiplier`: Agent setup only
+- `environment_build_timeout_multiplier`: Environment build only
+
+<Info>
+Multipliers are multiplicative with base timeouts from `task.toml`.
+</Info>
+
+### Trial Results
+
+Each trial produces a `TrialResult`:
+
+```python
+class TrialResult(BaseModel):
+    id: UUID
+    task_name: str
+    trial_name: str
+    trial_uri: str
+    task_id: LocalTaskId | GitTaskId
+    source: str | None = None
+    task_checksum: str
+    config: TrialConfig
+    agent_info: AgentInfo
+    agent_result: AgentContext | None = None
+    verifier_result: VerifierResult | None = None
+    exception_info: ExceptionInfo | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    environment_setup: TimingInfo | None = None
+    agent_setup: TimingInfo | None = None
+    agent_execution: TimingInfo | None = None
+    verifier: TimingInfo | None = None
+```
+
+### Timing Information
+
+Each phase tracks start and end times:
+
+```python
+class TimingInfo(BaseModel):
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+```
+
+Access timing data:
+
+```python
+trial_result = await trial.run()
+setup_duration = (
+    trial_result.environment_setup.finished_at -
+    trial_result.environment_setup.started_at
+)
+print(f"Environment setup took {setup_duration.total_seconds()}s")
+```
+
+### Exception Handling
+
+When trials fail, exception details are captured:
+
+```python
+class ExceptionInfo(BaseModel):
+    exception_type: str
+    exception_message: str
+    exception_traceback: str
+    occurred_at: datetime
+
+    @classmethod
+    def from_exception(cls, e: BaseException) -> "ExceptionInfo":
+        return cls(
+            exception_type=type(e).__name__,
+            exception_message=str(e),
+            exception_traceback=traceback.format_exc(),
+            occurred_at=datetime.now(),
+        )
+```
+
+Example:
+
+```python
+if trial_result.exception_info:
+    print(f"Trial failed: {trial_result.exception_info.exception_type}")
+    print(f"Message: {trial_result.exception_info.exception_message}")
+```
+
+### Trial Paths
+
+Each trial has a dedicated directory structure:
+
+```
+job-name/
+└── task-name__trial-id/
+    ├── config.json
+    ├── result.json
+    ├── agent/
+    │   ├── stdout.txt
+    │   └── ...
+    └── verifier/
+        ├── reward.txt
+        ├── stdout.txt
+        └── ctrf.json
+```
+
+## Jobs
+
+A **job** orchestrates multiple trials, handling parallelization, retry logic, and result aggregation.
+
+### Job Structure
+
+The `Job` class is the main entry point:
+
+```python
+class Job:
+    def __init__(self, config: JobConfig):
+        self.config = config
+        self.is_resuming = self._job_result_path.exists()
+        # ...
+
+    async def run(self) -> JobResult:
+        # Execute all trials
+        trial_results = await self._orchestrator.run()
+        # Aggregate results
+        return job_result
+```
+
+### Job Configuration
+
+Jobs are configured with `JobConfig`:
+
+```python
+class JobConfig(BaseModel):
+    job_name: str
+    jobs_dir: Path
+    agents: list[AgentConfig]
+    tasks: list[TaskConfig]
+    datasets: list[DatasetConfig]
+    n_attempts: int = 1
+    timeout_multiplier: float = 1.0
+    agent_timeout_multiplier: float = 1.0
+    verifier_timeout_multiplier: float = 1.0
+    agent_setup_timeout_multiplier: float = 1.0
+    environment_build_timeout_multiplier: float = 1.0
+    environment: EnvironmentConfig
+    verifier: VerifierConfig
+    orchestrator: OrchestratorConfig
+    metrics: list[MetricConfig]
+    artifacts: ArtifactsConfig
+    debug: bool = False
+```
+
+### Running a Job
+
+Via CLI:
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --agent aider \
+  --model anthropic/claude-opus-4-1 \
+  --n-attempts 3 \
+  --n-concurrent 4
+```
+
+Via Python API:
+
+```python
+from harbor.job import Job
+from harbor.models.job.config import JobConfig
+
+config = JobConfig(
+    job_name="my-evaluation",
+    jobs_dir=Path("./results"),
+    agents=[agent_config],
+    datasets=[dataset_config],
+    n_attempts=3,
+)
+
+job = Job(config)
+result = await job.run()
+print(f"Mean reward: {result.stats.mean_reward}")
+```
+
+### Trial Cartesian Product
+
+Jobs generate trials as the cartesian product of:
+- Agents
+- Tasks
+- Attempts
+
+```python
+self._trial_configs = [
+    TrialConfig(
+        task=task_config,
+        agent=agent_config,
+        trials_dir=self.job_dir,
+        # ...
+    )
+    for _ in range(self.config.n_attempts)
+    for task_config in self._task_configs
+    for agent_config in self.config.agents
+]
+```
+
+Example:
+- 2 agents × 10 tasks × 3 attempts = **60 trials**
+
+### Parallel Execution
+
+Control concurrency with `--n-concurrent`:
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --n-concurrent 8
+```
+
+This runs up to 8 trials simultaneously.
+
+<Warning>
+High concurrency may hit API rate limits or exhaust system resources. Start conservatively.
+</Warning>
+
+### Job Results
+
+Jobs produce a `JobResult`:
+
+```python
+class JobResult(BaseModel):
+    id: UUID
+    started_at: datetime
+    finished_at: datetime | None = None
+    n_total_trials: int
+    stats: JobStats
+    trial_results: list[TrialResult] | None = None
+```
+
+### Job Statistics
+
+The `JobStats` class aggregates trial results:
+
+```python
+class JobStats(BaseModel):
+    n_completed: int = 0
+    n_failed: int = 0
+    n_cancelled: int = 0
+    evals: dict[str, EvalStats] = Field(default_factory=dict)
+
+    @staticmethod
+    def format_agent_evals_key(
+        agent_name: str,
+        model_name: str | None,
+        dataset_name: str
+    ) -> str:
+        if model_name:
+            return f"{agent_name}__{model_name}__{dataset_name}"
+        return f"{agent_name}__{dataset_name}"
+```
+
+Stats are keyed by agent-model-dataset combinations:
+
+```python
+{
+    "claude-code__claude-opus-4-1__terminal-bench": {
+        "metrics": [{"mean": 0.85}],
+        "n_completed": 100,
+        "n_failed": 0
+    },
+    "aider__claude-opus-4-1__terminal-bench": {
+        "metrics": [{"mean": 0.78}],
+        "n_completed": 100,
+        "n_failed": 2
+    }
+}
+```
+
+### Resuming Jobs
+
+Jobs can be resumed if interrupted:
+
+```bash
+# Run job (may be interrupted)
+harber run --dataset my-dataset --agent claude-code --job-name eval-1
+
+# Resume same job (skips completed trials)
+harber run --dataset my-dataset --agent claude-code --job-name eval-1
+```
+
+The job automatically:
+1. Loads existing trial results
+2. Identifies incomplete trials
+3. Runs only remaining trials
+4. Aggregates all results
+
+```python
+def _maybe_init_existing_job(self):
+    if not self._job_config_path.exists():
+        return
+
+    # Load existing config
+    existing_config = JobConfig.model_validate_json(
+        self._job_config_path.read_text()
+    )
+
+    # Validate config hasn't changed
+    if existing_config != self.config:
+        raise FileExistsError(
+            f"Job directory {self.job_dir} already exists and cannot be "
+            "resumed with a different config."
+        )
+
+    # Load existing trial results
+    for trial_dir in self.job_dir.iterdir():
+        if trial_paths.result_path.exists():
+            self._existing_trial_results.append(
+                TrialResult.model_validate_json(
+                    trial_paths.result_path.read_text()
+                )
+            )
+```
+
+## Trial Hooks
+
+Jobs expose lifecycle hooks for monitoring:
+
+### Available Hooks
+
+```python
+class TrialEvent(Enum):
+    START = "start"
+    ENVIRONMENT_START = "environment_start"
+    AGENT_START = "agent_start"
+    VERIFICATION_START = "verification_start"
+    END = "end"
+    CANCEL = "cancel"
+```
+
+### Hook Event
+
+```python
+class TrialHookEvent(BaseModel):
+    trial_id: str
+    task_name: str
+    agent_name: str
+    result: TrialResult | None = None  # Populated for END event
+```
+
+### Registering Hooks
+
+```python
+async def on_trial_started(event: TrialHookEvent):
+    print(f"Starting trial {event.trial_id} for {event.task_name}")
+
+async def on_trial_completed(event: TrialHookEvent):
+    if event.result and event.result.verifier_result:
+        reward = event.result.verifier_result.rewards.get("reward", 0)
+        print(f"Trial {event.trial_id} completed with reward {reward}")
+
+job = Job(config)
+job.on_trial_started(on_trial_started)
+job.on_trial_ended(on_trial_completed)
+
+await job.run()
+```
+
+### All Hook Methods
+
+```python
+job.on_trial_started(callback)        # When trial begins
+job.on_environment_started(callback)  # When environment is ready
+job.on_agent_started(callback)        # When agent starts executing
+job.on_verification_started(callback) # When verification begins
+job.on_trial_ended(callback)          # When trial completes
+job.on_trial_cancelled(callback)      # When trial is cancelled
+```
+
+## Orchestrators
+
+Orchestrators manage trial execution and parallelization:
+
+```python
+self._orchestrator = OrchestratorFactory.create_orchestrator(
+    self.config.orchestrator.type,
+    trial_configs=self._remaining_trial_configs,
+    n_concurrent_trials=self.config.orchestrator.n_concurrent_trials,
+    metrics=self._metrics,
+    quiet=self.config.orchestrator.quiet,
+    retry_config=self.config.orchestrator.retry,
+    **self.config.orchestrator.kwargs,
+)
+```
+
+### Retry Configuration
+
+Configure automatic retries for failed trials:
+
+```python
+class RetryConfig(BaseModel):
+    max_retries: int = 0
+    retry_delay_sec: float = 0
+    retry_on_exceptions: list[str] = Field(default_factory=list)
+```
+
+## Job Directory Structure
+
+```
+results/
+└── job-name/
+    ├── config.json          # Job configuration
+    ├── result.json          # Job results and statistics
+    ├── job.log              # Job execution logs
+    ├── task-1__trial-1/     # Individual trial directories
+    │   ├── config.json
+    │   ├── result.json
+    │   ├── agent/
+    │   └── verifier/
+    ├── task-1__trial-2/
+    ├── task-2__trial-1/
+    └── ...
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Concurrency">
+    - Start with low concurrency (2-4) and increase gradually
+    - Monitor API rate limits
+    - Consider resource constraints (CPU, memory, network)
+    - Use cloud environments for high concurrency
+  </Accordion>
+
+  <Accordion title="Retry Strategy">
+    - Enable retries for transient failures
+    - Set appropriate retry delays
+    - Limit max retries to avoid infinite loops
+    - Log retry attempts for debugging
+  </Accordion>
+
+  <Accordion title="Job Management">
+    - Use descriptive job names
+    - Include timestamps in job names for organization
+    - Archive completed jobs regularly
+    - Document job configurations
+  </Accordion>
+
+  <Accordion title="Result Handling">
+    - Monitor jobs with hooks for real-time feedback
+    - Save intermediate results frequently
+    - Validate results after completion
+    - Export results to analysis tools
+  </Accordion>
+</AccordionGroup>
+
+## CLI Examples
+
+### Single Agent, Multiple Tasks
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --n-concurrent 4
+```
+
+### Multiple Agents, Comparison
+
+```bash
+harber run \
+  --dataset swe-bench@lite \
+  --agent claude-code \
+  --agent aider \
+  --agent openhands \
+  --model anthropic/claude-opus-4-1 \
+  --n-attempts 3 \
+  --n-concurrent 8
+```
+
+### With Custom Timeouts
+
+```bash
+harber run \
+  --dataset my-dataset \
+  --agent my-agent \
+  --timeout-multiplier 2.0 \
+  --agent-timeout-multiplier 1.5 \
+  --environment-build-timeout-multiplier 3.0
+```
+
+### Resume Interrupted Job
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --job-name my-eval-2026-03-03 \
+  --n-concurrent 4
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Tasks" icon="list-check" href="./tasks">
+    Task structure and configuration
+  </Card>
+  <Card title="Agents" icon="robot" href="./agents">
+    Agent implementation and execution
+  </Card>
+  <Card title="Verifiers" icon="check-circle" href="./verifiers">
+    Verification and grading
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="./metrics">
+    Result aggregation and metrics
+  </Card>
+</CardGroup>

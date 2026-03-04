@@ -1,0 +1,345 @@
+---
+title: harbor traces
+description: Export agent trajectories to datasets
+---
+
+The `harbor traces` command group provides utilities for exporting agent trajectories from trials to datasets for analysis, sharing, and training.
+
+## Commands
+
+### harbor traces export
+
+Export agent trajectories from trial directories to a Hugging Face dataset.
+
+```bash
+harbor traces export [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="-p, --path" type="Path" required>
+  Path to a trial directory or a root containing trials recursively.
+</ParamField>
+
+<ParamField path="--recursive/--no-recursive" type="boolean">
+  Search recursively for trials under path. Default: `--recursive`
+</ParamField>
+
+<ParamField path="--episodes" type="string">
+  Export all episodes or only the last episode per trial. Options: `all`, `last`. Default: `all`
+</ParamField>
+
+<ParamField path="--sharegpt/--no-sharegpt" type="boolean">
+  Also emit ShareGPT-formatted conversations column. Default: `--no-sharegpt`
+</ParamField>
+
+<ParamField path="--push/--no-push" type="boolean">
+  Push dataset to Hugging Face Hub after export. Default: `--no-push`
+</ParamField>
+
+<ParamField path="--repo" type="string">
+  Target Hugging Face repo id (org/name) when `--push` is set. Required when using `--push`.
+</ParamField>
+
+<ParamField path="--verbose/--no-verbose" type="boolean">
+  Print discovery details for debugging. Default: `--no-verbose`
+</ParamField>
+
+<ParamField path="--filter" type="string">
+  Filter trials by result: `success`, `failure`, or `all`. Default: `all`
+</ParamField>
+
+<ParamField path="--subagents/--no-subagents" type="boolean">
+  Export subagent traces. Default: `--subagents`
+</ParamField>
+
+<ParamField path="--instruction-metadata/--no-instruction-metadata" type="boolean">
+  Include instruction text for each row when available. Default: `--no-instruction-metadata`
+</ParamField>
+
+<ParamField path="--verifier-metadata/--no-verifier-metadata" type="boolean">
+  Include verifier stdout/stderr blobs when available. Default: `--no-verifier-metadata`
+</ParamField>
+
+#### Examples
+
+Export traces from a job directory:
+
+```bash
+harbor traces export --path ~/.cache/harbor/jobs/my-job-20260303-120000
+```
+
+Export and push to Hugging Face:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --push \
+  --repo myorg/my-traces
+```
+
+Export only successful trials:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter success
+```
+
+Export only failed trials:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter failure
+```
+
+Export only last episode per trial:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --episodes last
+```
+
+Export with ShareGPT format:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --sharegpt
+```
+
+Export with metadata:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --instruction-metadata \
+  --verifier-metadata
+```
+
+Export from a single trial:
+
+```bash
+harbor traces export \
+  --path ./trials/my-task__agent__attempt-1 \
+  --no-recursive
+```
+
+## Trajectory Format (ATIF)
+
+Harbor uses the **Agent Trajectory Interchange Format (ATIF)** to represent agent executions. Trajectories are stored as `trajectory.json` in trial directories.
+
+### ATIF Structure
+
+```json
+{
+  "episodes": [
+    {
+      "episode_id": "episode-0",
+      "steps": [
+        {
+          "step_id": 0,
+          "role": "user",
+          "content": "Create a Python script that..."
+        },
+        {
+          "step_id": 1,
+          "role": "assistant",
+          "content": "I'll create that script...",
+          "tool_calls": [
+            {
+              "tool_name": "write_file",
+              "tool_input": {"path": "script.py", "content": "..."},
+              "tool_output": {"success": true}
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "started_at": "2026-03-03T12:00:00Z",
+        "finished_at": "2026-03-03T12:05:00Z",
+        "outcome": "success"
+      }
+    }
+  ],
+  "metadata": {
+    "agent_name": "claude-code",
+    "model_name": "anthropic/claude-opus-4-1",
+    "task_name": "my-task"
+  }
+}
+```
+
+### Agent Support
+
+Agents that support ATIF export (set `SUPPORTS_ATIF = True`):
+- **claude-code**
+- **opencode**
+- More agents being added...
+
+Other agents may not generate trajectory files.
+
+## Dataset Schema
+
+Exported datasets include:
+
+### Core Fields
+
+- **trial_name**: Unique trial identifier
+- **task_name**: Task identifier
+- **agent_name**: Agent used
+- **model_name**: Model used (if applicable)
+- **episode_id**: Episode identifier
+- **trajectory**: ATIF-formatted trajectory
+- **reward**: Trial reward (0.0-1.0)
+- **success**: Boolean success indicator
+
+### Optional Fields
+
+- **conversation**: ShareGPT format (if `--sharegpt`)
+- **instruction**: Task instruction text (if `--instruction-metadata`)
+- **verifier_stdout**: Verifier output (if `--verifier-metadata`)
+- **verifier_stderr**: Verifier errors (if `--verifier-metadata`)
+
+### ShareGPT Format
+
+When `--sharegpt` is enabled, each row includes a `conversation` column:
+
+```json
+[
+  {
+    "from": "human",
+    "value": "Create a Python script that..."
+  },
+  {
+    "from": "gpt",
+    "value": "I'll create that script..."
+  }
+]
+```
+
+This format is compatible with many fine-tuning pipelines.
+
+## Subagent Traces
+
+When `--subagents` is enabled (default), the export returns a dictionary with:
+- **main**: Dataset of main agent traces
+- **subagent_name_1**: Dataset of subagent 1 traces
+- **subagent_name_2**: Dataset of subagent 2 traces
+- etc.
+
+When `--no-subagents`, only the main dataset is returned.
+
+## Use Cases
+
+### Training Data Collection
+
+Collect successful agent traces for training:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter success \
+  --sharegpt \
+  --push \
+  --repo myorg/training-data
+```
+
+### Failure Analysis
+
+Analyze failed attempts:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --filter failure \
+  --instruction-metadata \
+  --verifier-metadata
+```
+
+### Reinforcement Learning
+
+Export all traces for RL:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job-20260303-120000 \
+  --episodes all \
+  --push \
+  --repo myorg/rl-rollouts
+```
+
+### Benchmark Sharing
+
+Share evaluation results:
+
+```bash
+harbor traces export \
+  --path ~/.cache/harbor/jobs/terminal-bench-evaluation \
+  --push \
+  --repo myorg/terminal-bench-results
+```
+
+## Integration with Jobs
+
+You can export traces automatically after job completion:
+
+```bash
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --export-traces \
+  --export-push \
+  --export-repo myorg/my-traces
+```
+
+See [harbor run](/cli/run) for all trace export options.
+
+## Examples
+
+### Export from Multiple Jobs
+
+```bash
+# Export traces from all jobs in a directory
+for job in ~/.cache/harbor/jobs/*; do
+  harbor traces export --path "$job" --push --repo myorg/all-traces
+done
+```
+
+### Filter and Export
+
+```bash
+# Export only successful traces with metadata
+harbor traces export \
+  --path ~/.cache/harbor/jobs/my-job \
+  --filter success \
+  --instruction-metadata \
+  --verifier-metadata \
+  --push \
+  --repo myorg/successes
+```
+
+### Export for Analysis
+
+```python
+# Load exported dataset for analysis
+from datasets import load_dataset
+
+ds = load_dataset("myorg/my-traces")
+
+# Analyze success rates
+success_rate = sum(ds["success"]) / len(ds)
+print(f"Success rate: {success_rate:.2%}")
+
+# Filter by task
+task_traces = ds.filter(lambda x: x["task_name"] == "my-task")
+```
+
+## See Also
+
+- [harbor run](/cli/run) - Run jobs with trace export
+- [harbor jobs](/cli/jobs) - Manage jobs
+- [harbor view](/cli/view) - View trajectories interactively

@@ -1,0 +1,441 @@
+---
+title: Trial Results
+description: Result models for individual trial execution in Harbor
+---
+
+## TrialResult
+
+Contains comprehensive information about a single trial execution, including agent performance, verification results, timing, and any errors.
+
+**Import:** `from harbor.models.trial.result import TrialResult`
+
+### Fields
+
+<ParamField path="id" type="UUID" required>
+  Unique identifier for this trial. Auto-generated on creation.
+</ParamField>
+
+<ParamField path="task_name" type="str" required>
+  Name of the task that was executed.
+</ParamField>
+
+<ParamField path="trial_name" type="str" required>
+  Unique name for this trial instance.
+</ParamField>
+
+<ParamField path="trial_uri" type="str" required>
+  URI identifier for the trial.
+</ParamField>
+
+<ParamField path="task_id" type="LocalTaskId | GitTaskId" required>
+  Task identifier (local path or Git reference).
+</ParamField>
+
+<ParamField path="source" type="str | None" default="None">
+  Source dataset name if task is from a dataset.
+</ParamField>
+
+<ParamField path="task_checksum" type="str" required>
+  Checksum of the task definition for reproducibility tracking.
+</ParamField>
+
+<ParamField path="config" type="TrialConfig" required>
+  The complete configuration used for this trial.
+</ParamField>
+
+<ParamField path="agent_info" type="AgentInfo" required>
+  Information about the agent that executed the trial.
+</ParamField>
+
+<ParamField path="agent_result" type="AgentContext | None" default="None">
+  Agent execution results including tokens, cost, and metadata.
+</ParamField>
+
+<ParamField path="verifier_result" type="VerifierResult | None" default="None">
+  Verification results including rewards. None if verification was disabled or failed.
+</ParamField>
+
+<ParamField path="exception_info" type="ExceptionInfo | None" default="None">
+  Exception information if the trial encountered an error.
+</ParamField>
+
+<ParamField path="started_at" type="datetime | None" default="None">
+  Timestamp when the trial started.
+</ParamField>
+
+<ParamField path="finished_at" type="datetime | None" default="None">
+  Timestamp when the trial finished.
+</ParamField>
+
+<ParamField path="environment_setup" type="TimingInfo | None" default="None">
+  Timing information for environment setup phase.
+</ParamField>
+
+<ParamField path="agent_setup" type="TimingInfo | None" default="None">
+  Timing information for agent setup phase.
+</ParamField>
+
+<ParamField path="agent_execution" type="TimingInfo | None" default="None">
+  Timing information for agent execution phase.
+</ParamField>
+
+<ParamField path="verifier" type="TimingInfo | None" default="None">
+  Timing information for verification phase.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.trial.result import TrialResult
+
+# Typically obtained from Job.run() or trial execution
+trial_result = job_result.trial_results[0]
+
+print(f"Trial: {trial_result.trial_name}")
+print(f"Task: {trial_result.task_name}")
+print(f"Agent: {trial_result.agent_info.name}")
+print(f"Model: {trial_result.agent_info.model_info.name if trial_result.agent_info.model_info else 'N/A'}")
+
+# Timing analysis
+if trial_result.started_at and trial_result.finished_at:
+    duration = trial_result.finished_at - trial_result.started_at
+    print(f"Duration: {duration}")
+
+# Agent metrics
+if trial_result.agent_result:
+    print(f"Input tokens: {trial_result.agent_result.n_input_tokens}")
+    print(f"Output tokens: {trial_result.agent_result.n_output_tokens}")
+    print(f"Cost: ${trial_result.agent_result.cost_usd}")
+
+# Verification results
+if trial_result.verifier_result and trial_result.verifier_result.rewards:
+    print(f"Rewards: {trial_result.verifier_result.rewards}")
+
+# Error handling
+if trial_result.exception_info:
+    print(f"Error: {trial_result.exception_info.exception_type}")
+    print(f"Message: {trial_result.exception_info.exception_message}")
+```
+
+## AgentInfo
+
+Information about an agent that participated in a trial.
+
+**Import:** `from harbor.models.trial.result import AgentInfo`
+
+### Fields
+
+<ParamField path="name" type="str" required>
+  Name of the agent (e.g., `'claude-code'`, `'openhands'`).
+</ParamField>
+
+<ParamField path="version" type="str" required>
+  Version of the agent implementation.
+</ParamField>
+
+<ParamField path="model_info" type="ModelInfo | None" default="None">
+  Model information if the agent uses a language model.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.trial.result import AgentInfo, ModelInfo
+
+agent_info = AgentInfo(
+    name="claude-code",
+    version="1.0.0",
+    model_info=ModelInfo(
+        name="claude-opus-4-1",
+        provider="anthropic"
+    )
+)
+
+print(f"Agent: {agent_info.name} v{agent_info.version}")
+if agent_info.model_info:
+    print(f"Model: {agent_info.model_info.provider}/{agent_info.model_info.name}")
+```
+
+## ModelInfo
+
+Information about a language model used by an agent.
+
+**Import:** `from harbor.models.trial.result import ModelInfo`
+
+### Fields
+
+<ParamField path="name" type="str" required>
+  Model name (e.g., `'claude-opus-4-1'`, `'gpt-4'`).
+</ParamField>
+
+<ParamField path="provider" type="str" required>
+  Model provider (e.g., `'anthropic'`, `'openai'`).
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.trial.result import ModelInfo
+
+model_info = ModelInfo(
+    name="claude-opus-4-1",
+    provider="anthropic"
+)
+
+print(f"Using {model_info.provider}/{model_info.name}")
+```
+
+## TimingInfo
+
+Timing information for a phase of trial execution.
+
+**Import:** `from harbor.models.trial.result import TimingInfo`
+
+### Fields
+
+<ParamField path="started_at" type="datetime | None" default="None">
+  Timestamp when the phase started.
+</ParamField>
+
+<ParamField path="finished_at" type="datetime | None" default="None">
+  Timestamp when the phase finished.
+</ParamField>
+
+### Example
+
+```python
+from datetime import datetime
+from harbor.models.trial.result import TimingInfo
+
+timing = TimingInfo(
+    started_at=datetime.now(),
+    finished_at=None  # Set when phase completes
+)
+
+# Later...
+timing.finished_at = datetime.now()
+
+if timing.started_at and timing.finished_at:
+    duration = timing.finished_at - timing.started_at
+    print(f"Phase duration: {duration.total_seconds():.2f}s")
+```
+
+## ExceptionInfo
+
+Information about an exception that occurred during trial execution.
+
+**Import:** `from harbor.models.trial.result import ExceptionInfo`
+
+### Fields
+
+<ParamField path="exception_type" type="str" required>
+  The exception class name (e.g., `'TimeoutError'`, `'RuntimeError'`).
+</ParamField>
+
+<ParamField path="exception_message" type="str" required>
+  The exception message.
+</ParamField>
+
+<ParamField path="exception_traceback" type="str" required>
+  Full traceback string.
+</ParamField>
+
+<ParamField path="occurred_at" type="datetime" required>
+  Timestamp when the exception occurred.
+</ParamField>
+
+### Methods
+
+#### from_exception
+
+```python
+@classmethod
+def from_exception(cls, e: BaseException) -> "ExceptionInfo"
+```
+
+Create an ExceptionInfo from a Python exception.
+
+<ParamField path="e" type="BaseException" required>
+  The exception to capture.
+</ParamField>
+
+<ResponseField name="ExceptionInfo" type="ExceptionInfo">
+  Exception information object with type, message, traceback, and timestamp.
+</ResponseField>
+
+### Example
+
+```python
+from harbor.models.trial.result import ExceptionInfo
+
+try:
+    # Some operation that might fail
+    result = risky_operation()
+except Exception as e:
+    exc_info = ExceptionInfo.from_exception(e)
+    
+    print(f"Exception: {exc_info.exception_type}")
+    print(f"Message: {exc_info.exception_message}")
+    print(f"Occurred at: {exc_info.occurred_at}")
+    print(f"Traceback:\n{exc_info.exception_traceback}")
+
+# Manual creation
+exc_info = ExceptionInfo(
+    exception_type="CustomError",
+    exception_message="Something went wrong",
+    exception_traceback="Traceback (most recent call last):\n...",
+    occurred_at=datetime.now()
+)
+```
+
+## Analyzing Trial Results
+
+### Success and Error Rates
+
+```python
+from harbor import Job
+from harbor.models.job.config import JobConfig
+
+config = JobConfig(
+    job_name="analysis-example",
+    agents=[{"name": "claude-code", "model_name": "anthropic/claude-opus-4-1"}],
+    datasets=[{"name": "terminal-bench", "version": "2.0"}],
+    n_attempts=5
+)
+
+job = Job(config)
+result = await job.run()
+
+# Analyze trial results
+successes = [t for t in result.trial_results if t.exception_info is None]
+errors = [t for t in result.trial_results if t.exception_info is not None]
+
+print(f"Success rate: {len(successes) / len(result.trial_results):.1%}")
+print(f"Error rate: {len(errors) / len(result.trial_results):.1%}")
+
+# Error breakdown
+error_types = {}
+for trial in errors:
+    exc_type = trial.exception_info.exception_type
+    error_types[exc_type] = error_types.get(exc_type, 0) + 1
+
+print("\nError types:")
+for exc_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+    print(f"  {exc_type}: {count}")
+```
+
+### Performance Analysis
+
+```python
+# Token usage analysis
+total_input = sum(t.agent_result.n_input_tokens or 0 for t in result.trial_results if t.agent_result)
+total_output = sum(t.agent_result.n_output_tokens or 0 for t in result.trial_results if t.agent_result)
+total_cost = sum(t.agent_result.cost_usd or 0 for t in result.trial_results if t.agent_result)
+
+print(f"Total input tokens: {total_input:,}")
+print(f"Total output tokens: {total_output:,}")
+print(f"Total cost: ${total_cost:.2f}")
+print(f"Average cost per trial: ${total_cost / len(result.trial_results):.4f}")
+
+# Timing analysis
+durations = []
+for trial in result.trial_results:
+    if trial.started_at and trial.finished_at:
+        duration = (trial.finished_at - trial.started_at).total_seconds()
+        durations.append(duration)
+
+if durations:
+    print(f"\nExecution times:")
+    print(f"  Mean: {sum(durations) / len(durations):.1f}s")
+    print(f"  Min: {min(durations):.1f}s")
+    print(f"  Max: {max(durations):.1f}s")
+```
+
+### Reward Analysis
+
+```python
+# Collect rewards
+rewards_by_task = {}
+for trial in result.trial_results:
+    if trial.verifier_result and trial.verifier_result.rewards:
+        task_name = trial.task_name
+        if task_name not in rewards_by_task:
+            rewards_by_task[task_name] = []
+        rewards_by_task[task_name].append(trial.verifier_result.rewards)
+
+# Analyze variance across attempts
+for task_name, reward_list in rewards_by_task.items():
+    if len(reward_list) > 1:
+        # Check consistency across attempts
+        first_reward = reward_list[0]
+        all_same = all(r == first_reward for r in reward_list)
+        print(f"{task_name}: {'Consistent' if all_same else 'Variable'}")
+        if not all_same:
+            print(f"  Rewards: {reward_list}")
+```
+
+### Phase Timing Breakdown
+
+```python
+def analyze_phase_timing(trial: TrialResult):
+    """Analyze timing for each phase of a trial."""
+    phases = {
+        "Environment Setup": trial.environment_setup,
+        "Agent Setup": trial.agent_setup,
+        "Agent Execution": trial.agent_execution,
+        "Verification": trial.verifier
+    }
+    
+    print(f"\nTrial: {trial.trial_name}")
+    total_duration = 0
+    
+    for phase_name, timing in phases.items():
+        if timing and timing.started_at and timing.finished_at:
+            duration = (timing.finished_at - timing.started_at).total_seconds()
+            total_duration += duration
+            print(f"  {phase_name}: {duration:.1f}s")
+    
+    print(f"  Total: {total_duration:.1f}s")
+    
+    # Show percentage breakdown
+    if total_duration > 0:
+        print(f"\n  Breakdown:")
+        for phase_name, timing in phases.items():
+            if timing and timing.started_at and timing.finished_at:
+                duration = (timing.finished_at - timing.started_at).total_seconds()
+                percentage = (duration / total_duration) * 100
+                print(f"    {phase_name}: {percentage:.1f}%")
+
+# Analyze each trial
+for trial in result.trial_results[:5]:  # First 5 trials
+    analyze_phase_timing(trial)
+```
+
+## Serialization
+
+TrialResult is a Pydantic model and supports JSON serialization:
+
+```python
+from pathlib import Path
+from harbor.models.trial.result import TrialResult
+
+# Serialize to JSON
+json_str = trial_result.model_dump_json(indent=2)
+Path("trial_result.json").write_text(json_str)
+
+# Deserialize from JSON
+loaded = TrialResult.model_validate_json(json_str)
+
+# Export specific fields
+data = trial_result.model_dump(
+    include={"trial_name", "agent_info", "verifier_result"},
+    exclude_none=True
+)
+```
+
+## Related Types
+
+- [TrialConfig](/api/trial-config) - Configuration for trial execution
+- [AgentContext](/api/agent-context) - Agent execution results
+- [VerifierResult](/api/metrics#verifierresult) - Verification results
+- [JobResult](/api/job-result) - Job-level results containing TrialResults

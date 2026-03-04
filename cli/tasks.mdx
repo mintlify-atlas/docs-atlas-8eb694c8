@@ -1,0 +1,470 @@
+---
+title: harbor tasks
+description: Create and manage task definitions
+---
+
+The `harbor tasks` command group provides utilities for creating, testing, and managing task definitions.
+
+## Commands
+
+### harbor tasks init
+
+Initialize a new task directory with templates.
+
+```bash
+harbor tasks init <NAME> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="NAME" type="string" required>
+  Task name.
+</ParamField>
+
+#### Options
+
+<ParamField path="-p, --tasks-dir" type="Path">
+  Path to tasks directory. Default: `.` (current directory)
+</ParamField>
+
+<ParamField path="--no-pytest" type="boolean">
+  Do not include pytest test template.
+</ParamField>
+
+<ParamField path="--no-solution" type="boolean">
+  Do not include solution template.
+</ParamField>
+
+<ParamField path="--include-canary-strings" type="boolean">
+  Include canary strings in the task files.
+</ParamField>
+
+<ParamField path="--include-standard-metadata" type="boolean">
+  Include standard Terminal Bench metadata fields in `task.toml`.
+</ParamField>
+
+#### Examples
+
+Create a basic task:
+
+```bash
+harbor tasks init my-task
+```
+
+Create a task without solution template:
+
+```bash
+harbor tasks init my-task --no-solution
+```
+
+Create with standard metadata:
+
+```bash
+harbor tasks init my-task --include-standard-metadata
+```
+
+Create in a specific directory:
+
+```bash
+harbor tasks init my-task --tasks-dir ./benchmarks
+```
+
+#### Generated Structure
+
+The command generates:
+
+```
+my-task/
+├── instruction.md       # Task instruction for the agent
+├── task.toml            # Task configuration
+├── environment/
+│   └── Dockerfile       # Environment definition
+├── tests/
+│   ├── test.sh          # Test script (bash)
+│   └── test_outputs.py  # Output validation (if pytest)
+└── solution/            # Optional reference solution
+    └── solve.sh
+```
+
+### harbor tasks start-env
+
+Start an environment for a task (for interactive development and testing).
+
+```bash
+harbor tasks start-env --path <PATH> [OPTIONS]
+```
+
+#### Task Options
+
+<ParamField path="-p, --path" type="Path" required>
+  Path to task directory.
+</ParamField>
+
+#### Environment Options
+
+<ParamField path="-e, --env" type="EnvironmentType">
+  Environment type to start. Default: `docker`
+</ParamField>
+
+<ParamField path="--environment-import-path" type="string">
+  Import path for custom environment (e.g., `module.path:ClassName`).
+</ParamField>
+
+<ParamField path="--ek, --environment-kwarg" type="list[string]">
+  Environment kwarg in `key=value` format. Can be used multiple times.
+</ParamField>
+
+#### Setup Options
+
+<ParamField path="-a, --all" type="boolean">
+  Add solution and tests to environment. Default: `true`
+</ParamField>
+
+<ParamField path="-i, --interactive/--non-interactive" type="boolean">
+  Start environment in interactive mode. Default: `--interactive`
+</ParamField>
+
+#### Agent Options
+
+<ParamField path="--agent" type="string">
+  Agent name to install in the environment.
+</ParamField>
+
+<ParamField path="--agent-import-path" type="string">
+  Import path for custom agent (e.g., `module.path:ClassName`).
+</ParamField>
+
+<ParamField path="-m, --model" type="string">
+  Model name for the agent (e.g., `anthropic/claude-3-5-sonnet-20241022`).
+</ParamField>
+
+<ParamField path="--ak, --agent-kwarg" type="list[string]">
+  Additional agent kwarg in the format `key=value`. Can be set multiple times.
+</ParamField>
+
+#### Examples
+
+Start interactive environment:
+
+```bash
+harbor tasks start-env --path ./my-task
+```
+
+Start with agent pre-installed:
+
+```bash
+harbor tasks start-env \
+  --path ./my-task \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1
+```
+
+Start on Daytona:
+
+```bash
+harbor tasks start-env \
+  --path ./my-task \
+  --env daytona \
+  --interactive
+```
+
+Start without solution/tests:
+
+```bash
+harbor tasks start-env --path ./my-task --all=false
+```
+
+### harbor tasks check
+
+Run quality checks on a task definition.
+
+```bash
+harbor tasks check <TASK> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="TASK" type="Path" required>
+  Task name or path to task directory.
+</ParamField>
+
+#### Options
+
+<ParamField path="-m, --model" type="string">
+  Claude model name: `sonnet`, `opus`, or `haiku`. Default: `sonnet`
+</ParamField>
+
+<ParamField path="-o, --output-path" type="Path">
+  Path to write JSON quality check results.
+</ParamField>
+
+<ParamField path="-r, --rubric-path" type="Path">
+  Path to a rubric file (`.toml`, `.yaml`, `.yml`, or `.json`) defining quality criteria. Uses built-in default if not specified.
+</ParamField>
+
+#### Examples
+
+Check task quality:
+
+```bash
+harbor tasks check ./my-task
+```
+
+Use a specific model:
+
+```bash
+harbor tasks check ./my-task --model opus
+```
+
+Save results to file:
+
+```bash
+harbor tasks check ./my-task --output-path quality-report.json
+```
+
+Use custom rubric:
+
+```bash
+harbor tasks check ./my-task --rubric-path ./custom-rubric.toml
+```
+
+#### Quality Checks
+
+The command validates:
+- Instruction clarity and completeness
+- Environment setup correctness
+- Test validity and coverage
+- Solution correctness (if present)
+- Metadata completeness
+- Task difficulty appropriateness
+
+### harbor tasks debug
+
+Debug task failures and analyze instruction sufficiency.
+
+```bash
+harbor tasks debug <TASK_ID> --model <MODEL> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="TASK_ID" type="string" required>
+  Task ID to analyze.
+</ParamField>
+
+#### Options
+
+<ParamField path="-m, --model" type="string" required>
+  The name of the model to use.
+</ParamField>
+
+<ParamField path="--job-id" type="string">
+  Job ID to analyze.
+</ParamField>
+
+<ParamField path="--jobs-dir" type="Path">
+  Path to jobs directory. Default: `jobs`
+</ParamField>
+
+<ParamField path="--tasks-dir" type="Path">
+  The path to the tasks directory. Default: `tasks`
+</ParamField>
+
+<ParamField path="--n-trials" type="int">
+  Number of failed trials to analyze. Default: `10`
+</ParamField>
+
+<ParamField path="-o, --output-path" type="Path">
+  Path to write JSON debug analysis results.
+</ParamField>
+
+#### Examples
+
+Debug a task:
+
+```bash
+harbor tasks debug my-task-123 --model sonnet
+```
+
+Analyze a specific job:
+
+```bash
+harbor tasks debug my-task-123 \
+  --model sonnet \
+  --job-id my-job-20260303-120000
+```
+
+Analyze more trials:
+
+```bash
+harbor tasks debug my-task-123 \
+  --model sonnet \
+  --n-trials 20
+```
+
+Save results:
+
+```bash
+harbor tasks debug my-task-123 \
+  --model sonnet \
+  --output-path debug-report.json
+```
+
+### harbor tasks migrate
+
+Migrate Terminal Bench tasks to Harbor format.
+
+```bash
+harbor tasks migrate [OPTIONS]
+```
+
+<Warning>
+  This migration tool is not foolproof and may require manual adjustments. Please review the migrated tasks carefully before use.
+</Warning>
+
+#### Options
+
+<ParamField path="-i, --input" type="Path" required>
+  Path to Terminal Bench task directory or parent directory containing tasks.
+</ParamField>
+
+<ParamField path="-o, --output" type="Path" required>
+  Path to output directory for Harbor format tasks.
+</ParamField>
+
+<ParamField path="--cpus" type="int">
+  Override CPUs for all migrated tasks.
+</ParamField>
+
+<ParamField path="--memory-mb" type="int">
+  Override memory (MB) for all migrated tasks.
+</ParamField>
+
+<ParamField path="--storage-mb" type="int">
+  Override storage (MB) for all migrated tasks.
+</ParamField>
+
+<ParamField path="--gpus" type="int">
+  Override GPUs for all migrated tasks.
+</ParamField>
+
+#### Examples
+
+Migrate a single task:
+
+```bash
+harbor tasks migrate \
+  --input ~/terminal-bench/tasks/task-001 \
+  --output ./harbor-tasks
+```
+
+Migrate all tasks in a directory:
+
+```bash
+harbor tasks migrate \
+  --input ~/terminal-bench/tasks \
+  --output ./harbor-tasks
+```
+
+Migrate with resource overrides:
+
+```bash
+harbor tasks migrate \
+  --input ~/terminal-bench/tasks \
+  --output ./harbor-tasks \
+  --cpus 4 \
+  --memory-mb 8192
+```
+
+## Task Definition
+
+A Harbor task consists of:
+
+### instruction.md
+
+Natural language instructions for the agent. Should be:
+- Clear and unambiguous
+- Self-contained (no external references)
+- Focused on the task objective
+
+### task.toml
+
+Task configuration:
+
+```toml
+[environment]
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+
+[timeouts]
+agent_execution_sec = 600.0
+verifier_execution_sec = 60.0
+agent_setup_sec = 300.0
+environment_build_sec = 600.0
+
+[metadata]
+author_name = "Your Name"
+author_email = "you@example.com"
+difficulty = "medium"
+category = "software_engineering"
+tags = ["python", "testing"]
+```
+
+### environment/Dockerfile
+
+Defines the execution environment:
+
+```dockerfile
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip
+
+WORKDIR /workspace
+```
+
+### tests/
+
+Verification scripts:
+
+**test.sh** (required):
+```bash
+#!/bin/bash
+# Run tests and write reward to /logs/verifier/reward.txt
+if python3 -m pytest tests/; then
+    echo "1.0" > /logs/verifier/reward.txt
+else
+    echo "0.0" > /logs/verifier/reward.txt
+fi
+```
+
+**test_outputs.py** (optional, for pytest):
+```python
+import pytest
+
+def test_output_exists():
+    assert os.path.exists("/workspace/output.txt")
+
+def test_output_content():
+    with open("/workspace/output.txt") as f:
+        assert "expected" in f.read()
+```
+
+### solution/ (optional)
+
+Reference solution for validation:
+
+**solve.sh**:
+```bash
+#!/bin/bash
+# Implement the solution
+echo "Hello, World!" > /workspace/output.txt
+```
+
+## See Also
+
+- [harbor trials](/cli/trials) - Run trials on tasks
+- [harbor run](/cli/run) - Run evaluation jobs
+- [Creating Tasks](/guides/creating-tasks) - Task creation guide

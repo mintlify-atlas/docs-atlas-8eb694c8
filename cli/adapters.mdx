@@ -1,0 +1,369 @@
+---
+title: harbor adapters
+description: Create and manage benchmark adapters
+---
+
+The `harbor adapters` command group provides utilities for creating adapters that convert external benchmark formats to Harbor task format.
+
+## Commands
+
+### harbor adapters init
+
+Launch the interactive wizard to initialize a new adapter template.
+
+```bash
+harbor adapters init [ADAPTER_ID] [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="ADAPTER_ID" type="string">
+  Adapter ID (lowercase, no spaces). Leave empty to derive from `--name`.
+</ParamField>
+
+#### Options
+
+<ParamField path="--adapters-dir" type="Path">
+  Directory in which to create the adapter folder. Default: `adapters`
+</ParamField>
+
+<ParamField path="-n, --name" type="string">
+  Vanilla benchmark name (e.g., `SWE-bench`, `MLEBench`).
+</ParamField>
+
+<ParamField path="--class-name" type="string">
+  Override adapter class name. Defaults from `--name`.
+</ParamField>
+
+<ParamField path="-d, --description" type="string">
+  One-line adapter description for README.
+</ParamField>
+
+<ParamField path="--source-url" type="string">
+  Source repository or paper URL.
+</ParamField>
+
+<ParamField path="--license" type="string">
+  Dataset/benchmark license (for README).
+</ParamField>
+
+#### Examples
+
+Launch interactive wizard:
+
+```bash
+harbor adapters init
+```
+
+Create adapter with pre-filled information:
+
+```bash
+harbor adapters init swebench \
+  --name "SWE-bench" \
+  --description "Adapter for SWE-bench: Resolving real GitHub issues" \
+  --source-url "https://github.com/princeton-nlp/SWE-bench" \
+  --license "MIT"
+```
+
+Create in custom directory:
+
+```bash
+harbor adapters init mybench \
+  --adapters-dir ./my-adapters \
+  --name "MyBench"
+```
+
+Specify custom class name:
+
+```bash
+harbor adapters init mycomplex-bench \
+  --name "MyComplex Bench" \
+  --class-name "MyComplexBenchAdapter"
+```
+
+#### Generated Structure
+
+The command generates an adapter template:
+
+```
+adapters/mybench/
+├── README.md              # Documentation
+├── adapter.py             # Main adapter implementation
+├── run_adapter.py         # CLI entry point
+├── template/              # Task template files
+│   ├── instruction.md.j2  # Jinja2 template for instructions
+│   ├── task.toml.j2       # Jinja2 template for task config
+│   ├── environment/
+│   │   └── Dockerfile.j2  # Jinja2 template for Dockerfile
+│   └── tests/
+│       └── test.sh.j2     # Jinja2 template for test script
+└── requirements.txt       # Python dependencies (optional)
+```
+
+#### Interactive Wizard
+
+The wizard will prompt for:
+
+1. **Adapter ID**: Lowercase identifier (e.g., `swebench`)
+2. **Benchmark Name**: Display name (e.g., `SWE-bench`)
+3. **Description**: One-line description
+4. **Source URL**: Repository or paper URL
+5. **License**: Dataset license
+6. **Class Name**: Python class name for the adapter
+
+It will then:
+- Create the adapter directory structure
+- Generate template files with placeholders
+- Provide next steps for implementation
+
+## Adapter Development
+
+### Adapter Class
+
+Implement the adapter in `adapter.py`:
+
+```python
+from pathlib import Path
+from harbor.mappers.base import BaseMapper
+
+class MyBenchAdapter(BaseMapper):
+    """Adapter for MyBench benchmark."""
+    
+    def map(self, input_path: Path, output_path: Path) -> MapResult:
+        """Convert MyBench format to Harbor format.
+        
+        Args:
+            input_path: Path to MyBench dataset
+            output_path: Path to output Harbor tasks
+            
+        Returns:
+            MapResult with mapped and failed task counts
+        """
+        # Load MyBench dataset
+        dataset = self._load_dataset(input_path)
+        
+        mapped = []
+        failed = []
+        
+        for task in dataset:
+            try:
+                # Convert to Harbor format
+                task_dir = output_path / task["id"]
+                self._map_task(task, task_dir)
+                mapped.append(task["id"])
+            except Exception as e:
+                failed.append((task["id"], str(e)))
+                
+        return MapResult(mapped=mapped, failed=failed)
+```
+
+### CLI Entry Point
+
+The `run_adapter.py` provides a CLI interface:
+
+```python
+import typer
+from pathlib import Path
+from .adapter import MyBenchAdapter
+
+app = typer.Typer()
+
+@app.command()
+def convert(
+    input_path: Path,
+    output_path: Path,
+    # Add custom options here
+):
+    """Convert MyBench dataset to Harbor format."""
+    adapter = MyBenchAdapter()
+    result = adapter.map(input_path, output_path)
+    
+    print(f"Mapped: {len(result.mapped)} tasks")
+    print(f"Failed: {len(result.failed)} tasks")
+
+if __name__ == "__main__":
+    app()
+```
+
+### Template Files
+
+Use Jinja2 templates in the `template/` directory:
+
+**instruction.md.j2**:
+```jinja
+# {{ task.title }}
+
+{{ task.description }}
+
+## Requirements
+
+{% for req in task.requirements %}
+- {{ req }}
+{% endfor %}
+```
+
+**task.toml.j2**:
+```jinja
+[environment]
+cpus = {{ task.cpus | default(2) }}
+memory_mb = {{ task.memory_mb | default(4096) }}
+
+[metadata]
+author_name = "{{ task.author }}"
+difficulty = "{{ task.difficulty }}"
+```
+
+**Dockerfile.j2**:
+```jinja
+FROM {{ task.base_image | default('ubuntu:22.04') }}
+
+{% for pkg in task.packages %}
+RUN apt-get install -y {{ pkg }}
+{% endfor %}
+```
+
+## Existing Adapters
+
+Harbor includes adapters for 20+ benchmarks:
+
+### Software Engineering
+- **swebench** - SWE-Bench
+- **swebenchpro** - SWE-Bench Pro
+- **swesmith** - SWESmith
+- **swtbench** - SWT-Bench
+- **aider_polyglot** - Aider Polyglot
+
+### Code Generation
+- **autocodebench** - AutoCodeBench
+- **compilebench** - CompileBench
+- **livecodebench** - LiveCodeBench
+- **humanevalfix** - HumanEvalFix
+- **evoeval** - EvoEval
+- **deveval** - DevEval
+- **codepde** - CodePDE
+
+### Research & ML
+- **mlgym-bench** - ML-Gym Bench
+- **replicationbench** - ReplicationBench
+
+### Reasoning & QA
+- **aime** - AIME
+- **gpqa-diamond** - GPQA Diamond
+- **usaco** - USACO
+
+### Multimodal
+- **mmau** - MMAU
+
+### Other
+- **sldbench** - SLDBench
+
+You can find these in the `adapters/` directory of the Harbor repository.
+
+## Running Adapters
+
+After creating an adapter, run it to convert datasets:
+
+```bash
+# Using the adapter's CLI
+cd adapters/mybench
+python run_adapter.py convert \
+  --input-path ~/mybench-dataset \
+  --output-path ~/harbor-tasks
+
+# Or using Python
+python -m adapters.mybench.run_adapter convert \
+  --input-path ~/mybench-dataset \
+  --output-path ~/harbor-tasks
+```
+
+## Examples
+
+### Create a New Adapter
+
+```bash
+# Launch interactive wizard
+harbor adapters init
+
+# Follow prompts to create adapter
+# ...
+
+# Implement the adapter logic
+cd adapters/mybench
+vim adapter.py
+
+# Test the adapter
+python run_adapter.py convert \
+  --input-path ~/test-dataset \
+  --output-path ~/test-output
+```
+
+### Adapt an Existing Benchmark
+
+```bash
+# Create adapter for a new benchmark
+harbor adapters init coolbench \
+  --name "CoolBench" \
+  --description "Adapter for CoolBench coding benchmark" \
+  --source-url "https://github.com/example/coolbench"
+
+# Implement conversion logic
+cd adapters/coolbench
+# Edit adapter.py to load and convert CoolBench format
+
+# Run the adapter
+python run_adapter.py convert \
+  --input ~/coolbench-v1.0 \
+  --output ~/harbor-tasks/coolbench@1.0
+
+# Test with Harbor
+harbor run --path ~/harbor-tasks/coolbench@1.0 --agent oracle
+```
+
+### Customize Template Files
+
+```bash
+# Create adapter
+harbor adapters init mybench
+
+# Customize templates
+cd adapters/mybench/template
+
+# Edit instruction template
+vim instruction.md.j2
+
+# Edit Dockerfile template
+vim environment/Dockerfile.j2
+
+# Edit test script template
+vim tests/test.sh.j2
+```
+
+## Best Practices
+
+### Adapter Implementation
+
+1. **Handle errors gracefully**: Catch exceptions per-task, don't fail the entire conversion
+2. **Validate inputs**: Check that the input dataset has the expected structure
+3. **Provide progress feedback**: Print status as tasks are converted
+4. **Support incremental conversion**: Skip already-converted tasks
+5. **Document assumptions**: Note any limitations or requirements in README
+
+### Template Design
+
+1. **Use sensible defaults**: Provide fallback values for optional fields
+2. **Keep templates simple**: Complex logic belongs in the adapter, not templates
+3. **Test with real data**: Ensure templates render correctly with actual benchmark data
+4. **Document variables**: Comment what each template variable represents
+
+### Testing
+
+1. **Test on sample data**: Start with a small subset of the benchmark
+2. **Validate output**: Run `harbor tasks check` on converted tasks
+3. **Run oracle agent**: Verify tasks work with `harbor run --agent oracle`
+4. **Check solutions**: If benchmark has solutions, ensure they pass tests
+
+## See Also
+
+- [harbor tasks](/cli/tasks) - Create and manage tasks
+- [harbor datasets](/cli/datasets) - List and download datasets
+- [Benchmark Adapters Guide](/guides/benchmark-adapters) - Detailed adapter development guide

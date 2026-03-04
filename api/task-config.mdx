@@ -1,0 +1,404 @@
+---
+title: Task Configuration
+description: Configuration models for tasks, agents, environments, and verifiers
+---
+
+## TaskConfig (Task-Level)
+
+Defines task-level configuration from `task.toml` files.
+
+**Import:** `from harbor.models.task.config import TaskConfig`
+
+### Fields
+
+<ParamField path="version" type="str" default="'1.0'">
+  Task configuration version.
+</ParamField>
+
+<ParamField path="metadata" type="dict[str, Any]" default="{}">
+  Arbitrary task metadata (author, description, tags, etc.).
+</ParamField>
+
+<ParamField path="verifier" type="VerifierConfig" default="VerifierConfig()">
+  Verifier configuration for this task.
+</ParamField>
+
+<ParamField path="agent" type="AgentConfig" default="AgentConfig()">
+  Agent execution configuration.
+</ParamField>
+
+<ParamField path="environment" type="EnvironmentConfig" default="EnvironmentConfig()">
+  Environment resource configuration.
+</ParamField>
+
+<ParamField path="solution" type="SolutionConfig" default="SolutionConfig()">
+  Solution script configuration.
+</ParamField>
+
+<ParamField path="source" type="str | None" default="None">
+  Source dataset name if task is from a dataset.
+</ParamField>
+
+### Methods
+
+#### model_validate_toml
+
+```python
+@classmethod
+def model_validate_toml(cls, toml_data: str) -> "TaskConfig"
+```
+
+Create a TaskConfig from TOML string.
+
+<ParamField path="toml_data" type="str" required>
+  TOML-formatted configuration string.
+</ParamField>
+
+<ResponseField name="TaskConfig" type="TaskConfig">
+  Parsed configuration object.
+</ResponseField>
+
+#### model_dump_toml
+
+```python
+def model_dump_toml(self) -> str
+```
+
+Serialize TaskConfig to TOML string.
+
+<ResponseField name="toml_string" type="str">
+  TOML-formatted configuration.
+</ResponseField>
+
+### Example
+
+```python
+from harbor.models.task.config import TaskConfig
+
+# Load from TOML file
+toml_content = Path("task.toml").read_text()
+task_config = TaskConfig.model_validate_toml(toml_content)
+
+# Create programmatically
+task_config = TaskConfig(
+    version="1.0",
+    metadata={
+        "author": "Harbor Team",
+        "difficulty": "hard",
+        "tags": ["python", "testing"]
+    },
+    agent=AgentConfig(timeout_sec=900.0),
+    environment=EnvironmentConfig(
+        cpus=2,
+        memory_mb=4096,
+        gpus=1
+    ),
+    verifier=VerifierConfig(timeout_sec=300.0)
+)
+
+# Export to TOML
+toml_str = task_config.model_dump_toml()
+Path("task.toml").write_text(toml_str)
+```
+
+## AgentConfig (Task-Level)
+
+Agent execution settings in task configuration.
+
+**Import:** `from harbor.models.task.config import AgentConfig`
+
+### Fields
+
+<ParamField path="timeout_sec" type="float" default="600.0">
+  Agent execution timeout in seconds (10 minutes default).
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.task.config import AgentConfig
+
+agent_config = AgentConfig(
+    timeout_sec=1800.0  # 30 minutes
+)
+```
+
+## EnvironmentConfig (Task-Level)
+
+Environment resource configuration in task definition.
+
+**Import:** `from harbor.models.task.config import EnvironmentConfig`
+
+### Fields
+
+<ParamField path="build_timeout_sec" type="float" default="600.0">
+  Environment build timeout in seconds (10 minutes default).
+</ParamField>
+
+<ParamField path="docker_image" type="str | None" default="None">
+  Pre-built Docker image to use instead of building from Dockerfile.
+</ParamField>
+
+<ParamField path="cpus" type="int" default="1">
+  Number of CPU cores allocated to the environment.
+</ParamField>
+
+<ParamField path="memory_mb" type="int" default="2048">
+  Memory allocation in megabytes (2GB default).
+</ParamField>
+
+<ParamField path="storage_mb" type="int" default="10240">
+  Storage allocation in megabytes (10GB default).
+</ParamField>
+
+<ParamField path="gpus" type="int" default="0">
+  Number of GPUs to allocate.
+</ParamField>
+
+<ParamField path="gpu_types" type="list[str] | None" default="None">
+  Acceptable GPU types (e.g., `['H100', 'A100', 'T4']`). None means any GPU is acceptable.
+</ParamField>
+
+<ParamField path="allow_internet" type="bool" default="True">
+  Whether to allow internet access in the environment.
+</ParamField>
+
+<ParamField path="mcp_servers" type="list[MCPServerConfig]" default="[]">
+  MCP (Model Context Protocol) servers available to agents.
+</ParamField>
+
+<ParamField path="skills_dir" type="str | None" default="None">
+  Path to skills directory in the environment. Contents are copied to the agent's skills directory.
+</ParamField>
+
+### Deprecated Fields
+
+<ParamField path="memory" type="str | None" deprecated>
+  **Deprecated.** Use `memory_mb` instead. Format: `'2G'`, `'512M'`, etc.
+</ParamField>
+
+<ParamField path="storage" type="str | None" deprecated>
+  **Deprecated.** Use `storage_mb` instead. Format: `'10G'`, `'5120M'`, etc.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.task.config import EnvironmentConfig, MCPServerConfig
+
+env_config = EnvironmentConfig(
+    build_timeout_sec=900.0,
+    cpus=4,
+    memory_mb=8192,  # 8GB
+    storage_mb=20480,  # 20GB
+    gpus=1,
+    gpu_types=["H100", "A100"],
+    allow_internet=True,
+    mcp_servers=[
+        MCPServerConfig(
+            name="filesystem",
+            transport="stdio",
+            command="mcp-server-filesystem",
+            args=["--root", "/workspace"]
+        )
+    ],
+    skills_dir="/workspace/.skills"
+)
+```
+
+## VerifierConfig (Task-Level)
+
+Verifier execution configuration.
+
+**Import:** `from harbor.models.task.config import VerifierConfig`
+
+### Fields
+
+<ParamField path="timeout_sec" type="float" default="600.0">
+  Verifier execution timeout in seconds (10 minutes default).
+</ParamField>
+
+<ParamField path="env" type="dict[str, str]" default="{}">
+  Environment variables for the verifier script.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.task.config import VerifierConfig
+
+verifier_config = VerifierConfig(
+    timeout_sec=300.0,  # 5 minutes
+    env={
+        "EXPECTED_OUTPUT": "success",
+        "TOLERANCE": "0.01"
+    }
+)
+```
+
+## SolutionConfig
+
+Solution script configuration.
+
+**Import:** `from harbor.models.task.config import SolutionConfig`
+
+### Fields
+
+<ParamField path="env" type="dict[str, str]" default="{}">
+  Environment variables for the solution script.
+</ParamField>
+
+### Example
+
+```python
+from harbor.models.task.config import SolutionConfig
+
+solution_config = SolutionConfig(
+    env={
+        "API_KEY": "test-key",
+        "MODE": "production"
+    }
+)
+```
+
+## MCPServerConfig
+
+Configuration for an MCP (Model Context Protocol) server.
+
+**Import:** `from harbor.models.task.config import MCPServerConfig`
+
+### Fields
+
+<ParamField path="name" type="str" required>
+  Name of the MCP server.
+</ParamField>
+
+<ParamField path="transport" type="str" default="'sse'">
+  Transport protocol: `'sse'`, `'streamable-http'`, or `'stdio'`.
+</ParamField>
+
+<ParamField path="url" type="str | None" default="None">
+  Server URL (required for `sse` and `streamable-http` transports).
+</ParamField>
+
+<ParamField path="command" type="str | None" default="None">
+  Command to start the server (required for `stdio` transport).
+</ParamField>
+
+<ParamField path="args" type="list[str]" default="[]">
+  Command-line arguments (for `stdio` transport).
+</ParamField>
+
+### Validation
+
+The config validates that:
+- `url` is provided for `sse` and `streamable-http` transports
+- `command` is provided for `stdio` transport
+
+### Examples
+
+#### SSE Transport
+
+```python
+from harbor.models.task.config import MCPServerConfig
+
+mcp_sse = MCPServerConfig(
+    name="remote-filesystem",
+    transport="sse",
+    url="https://mcp.example.com/filesystem"
+)
+```
+
+#### STDIO Transport
+
+```python
+mcp_stdio = MCPServerConfig(
+    name="local-git",
+    transport="stdio",
+    command="npx",
+    args=["-y", "@modelcontextprotocol/server-git"]
+)
+```
+
+#### Multiple Servers
+
+```python
+from harbor.models.task.config import EnvironmentConfig, MCPServerConfig
+
+env_config = EnvironmentConfig(
+    mcp_servers=[
+        MCPServerConfig(
+            name="filesystem",
+            transport="stdio",
+            command="mcp-server-filesystem",
+            args=["--root", "/workspace"]
+        ),
+        MCPServerConfig(
+            name="git",
+            transport="stdio",
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-git"]
+        ),
+        MCPServerConfig(
+            name="remote-db",
+            transport="sse",
+            url="https://mcp.example.com/database"
+        )
+    ]
+)
+```
+
+## Complete task.toml Example
+
+```toml
+version = "1.0"
+
+[metadata]
+author = "Harbor Team"
+difficulty = "medium"
+tags = ["python", "api", "testing"]
+description = "Build and test a REST API"
+
+[agent]
+timeout_sec = 1200.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 15360
+gpus = 0
+allow_internet = true
+skills_dir = "/workspace/.skills"
+
+[[environment.mcp_servers]]
+name = "filesystem"
+transport = "stdio"
+command = "mcp-server-filesystem"
+args = ["--root", "/workspace"]
+
+[[environment.mcp_servers]]
+name = "git"
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git"]
+
+[verifier]
+timeout_sec = 300.0
+
+[verifier.env]
+EXPECTED_STATUS = "200"
+TOLERANCE = "0.01"
+
+[solution]
+
+[solution.env]
+API_KEY = "test-key"
+```
+
+## Related Types
+
+- [TrialConfig](/api/trial-config) - Trial-level configuration that uses these types
+- [JobConfig](/api/job-config) - Job-level configuration
+- [BaseAgent](/api/base-agent) - Accesses mcp_servers and skills_dir
+- [BaseEnvironment](/api/base-environment) - Manages environment resources

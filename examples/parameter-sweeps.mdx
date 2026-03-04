@@ -1,0 +1,443 @@
+---
+title: Running parameter sweeps
+description: Optimize agent configurations and hyperparameters using Harbor's sweep functionality
+---
+
+Harbor's sweep functionality allows you to systematically explore parameter spaces to find optimal agent configurations. This guide shows you how to run parameter sweeps and analyze results.
+
+## Overview
+
+Parameter sweeps help you:
+- Find optimal agent configurations
+- Compare different models and temperatures
+- Test retry strategies
+- Identify performance bottlenecks
+- Validate hyperparameter sensitivity
+
+## Quick Start
+
+<Steps>
+  <Step title="Define sweep configuration">
+    Create a sweep config file:
+    
+    ```yaml title="sweep-config.yaml"
+    dataset:
+      registry:
+        name: terminal-bench@2.0
+        max_tasks: 50  # Use subset for faster iteration
+    
+    orchestrator:
+      n_concurrent_trials: 10
+    
+    # Parameter grid
+    sweep:
+      agent:
+        name: ["claude-code", "aider", "openhands"]
+      model: 
+        - "anthropic/claude-opus-4-1"
+        - "anthropic/claude-sonnet-4"
+      temperature: [0.0, 0.3, 0.7]
+    ```
+  </Step>
+
+  <Step title="Run sweep">
+    ```bash
+    export ANTHROPIC_API_KEY=your-key
+    
+    harbor sweeps run --config sweep-config.yaml
+    ```
+    
+    This runs all combinations: 3 agents × 2 models × 3 temperatures = 18 experiments
+  </Step>
+
+  <Step title="Analyze results">
+    View results table:
+    
+    ```bash
+    harbor sweeps summarize <sweep-id>
+    ```
+  </Step>
+</Steps>
+
+## Sweep Configuration
+
+### Grid Search
+
+Test all combinations of parameters:
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code", "aider"]
+  model:
+    - "anthropic/claude-opus-4-1"
+    - "anthropic/claude-sonnet-4"
+  temperature: [0.0, 0.5, 1.0]
+  max_tokens: [4000, 8000]
+
+# Total: 2 × 2 × 3 × 2 = 24 experiments
+```
+
+### Conditional Parameters
+
+Different parameters per agent:
+
+```yaml
+sweep:
+  - agent:
+      name: claude-code
+    model: "anthropic/claude-opus-4-1"
+    temperature: [0.0, 0.3, 0.7]
+  
+  - agent:
+      name: aider
+    model: "anthropic/claude-sonnet-4"
+    edit_format: ["whole", "diff", "udiff"]
+  
+  - agent:
+      name: openhands
+    model: "anthropic/claude-opus-4-1"
+    max_iterations: [10, 20, 30]
+```
+
+### Timeout Multipliers
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code"]
+  model: ["anthropic/claude-opus-4-1"]
+  timeout_multipliers:
+    agent: [1.0, 1.5, 2.0]
+    verifier: [1.0, 2.0]
+    build: [1.0, 1.5]
+```
+
+## Analysis
+
+### Results Table
+
+```bash
+harbor sweeps summarize <sweep-id>
+```
+
+Output:
+
+```
+┌────────────┬─────────────────┬─────────┬──────────┬──────────┬──────────┐
+│ Agent      │ Model           │ Temp    │ Success  │ Avg Time │ Avg Cost │
+├────────────┼─────────────────┼─────────┼──────────┼──────────┼──────────┤
+│ claude-code│ opus-4-1        │ 0.0     │ 72%      │ 145s     │ $0.42    │
+│ claude-code│ opus-4-1        │ 0.3     │ 68%      │ 152s     │ $0.45    │
+│ claude-code│ sonnet-4        │ 0.0     │ 65%      │ 128s     │ $0.18    │
+│ aider      │ opus-4-1        │ 0.0     │ 58%      │ 182s     │ $0.38    │
+└────────────┴─────────────────┴─────────┴──────────┴──────────┴──────────┘
+```
+
+### Export Results
+
+Export to CSV for analysis:
+
+```bash
+harbor sweeps summarize <sweep-id> --format csv > results.csv
+```
+
+Load in Python:
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load results
+df = pd.read_csv("results.csv")
+
+# Plot success rate by temperature
+for agent in df["agent"].unique():
+    agent_df = df[df["agent"] == agent]
+    plt.plot(agent_df["temperature"], agent_df["success_rate"], 
+             label=agent, marker='o')
+
+plt.xlabel("Temperature")
+plt.ylabel("Success Rate")
+plt.legend()
+plt.title("Success Rate vs Temperature")
+plt.savefig("temperature_sweep.png")
+```
+
+### Statistical Significance
+
+Compare configurations:
+
+```python
+import json
+from scipy import stats
+
+def load_trial_rewards(job_id):
+    """Load all trial rewards from a job."""
+    job_result = json.load(open(f"jobs/{job_id}/job_result.json"))
+    rewards = []
+    for trial in job_result["trials"]:
+        if trial["status"] == "completed":
+            rewards.append(trial["reward"])
+    return rewards
+
+# Compare two configurations
+config_a_rewards = load_trial_rewards("job-abc")
+config_b_rewards = load_trial_rewards("job-xyz")
+
+# T-test
+t_stat, p_value = stats.ttest_ind(config_a_rewards, config_b_rewards)
+
+print(f"Config A mean: {sum(config_a_rewards)/len(config_a_rewards):.3f}")
+print(f"Config B mean: {sum(config_b_rewards)/len(config_b_rewards):.3f}")
+print(f"P-value: {p_value:.4f}")
+
+if p_value < 0.05:
+    print("Difference is statistically significant")
+else:
+    print("No significant difference")
+```
+
+## Common Sweep Patterns
+
+### Model Comparison
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code"]
+  model:
+    - "anthropic/claude-opus-4-1"
+    - "anthropic/claude-sonnet-4"
+    - "openai/gpt-4"
+    - "openai/gpt-4-turbo"
+    - "google/gemini-pro"
+  temperature: [0.0]
+```
+
+### Temperature Tuning
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code"]
+  model: ["anthropic/claude-opus-4-1"]
+  temperature: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+```
+
+### Retry Strategy
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code"]
+  model: ["anthropic/claude-opus-4-1"]
+  
+orchestrator:
+  retry:
+    max_attempts: [1, 2, 3, 5]
+    on_agent_error: [true]
+    on_verifier_error: [false]
+    backoff_factor: [1.0, 2.0]
+```
+
+### Concurrency Optimization
+
+```yaml
+sweep:
+  agent:
+    name: ["claude-code"]
+  model: ["anthropic/claude-opus-4-1"]
+  
+orchestrator:
+  n_concurrent_trials: [1, 2, 4, 8, 16, 32]
+  
+environment:
+  type: ["docker", "daytona"]
+```
+
+## Advanced Techniques
+
+### Multi-Objective Optimization
+
+Balance success rate, cost, and time:
+
+```python
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv("sweep_results.csv")
+
+# Normalize metrics to 0-1 scale
+df["success_norm"] = df["success_rate"]
+df["cost_norm"] = 1 - (df["avg_cost"] / df["avg_cost"].max())
+df["time_norm"] = 1 - (df["avg_time"] / df["avg_time"].max())
+
+# Combined score (weights: 50% success, 30% cost, 20% time)
+df["score"] = (
+    0.5 * df["success_norm"] + 
+    0.3 * df["cost_norm"] + 
+    0.2 * df["time_norm"]
+)
+
+# Find best configuration
+best = df.loc[df["score"].idxmax()]
+print(f"Best configuration:")
+print(f"  Agent: {best['agent']}")
+print(f"  Model: {best['model']}")
+print(f"  Temperature: {best['temperature']}")
+print(f"  Score: {best['score']:.3f}")
+```
+
+### Bayesian Optimization
+
+For expensive sweeps, use Bayesian optimization:
+
+```python
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF
+import numpy as np
+
+def objective_function(params):
+    """Run Harbor job with given params and return success rate."""
+    temp, max_tokens = params
+    
+    # Run job
+    result = run_harbor_job(
+        agent="claude-code",
+        model="anthropic/claude-opus-4-1",
+        temperature=temp,
+        max_tokens=int(max_tokens)
+    )
+    
+    return result["stats"]["mean_reward"]
+
+# Bayesian optimization loop
+X_observed = []  # Parameter combinations tried
+y_observed = []  # Observed success rates
+
+for iteration in range(20):
+    # Fit GP model
+    gp = GaussianProcessRegressor(kernel=RBF())
+    if len(X_observed) > 0:
+        gp.fit(X_observed, y_observed)
+    
+    # Acquisition function (upper confidence bound)
+    def acquisition(x):
+        mu, sigma = gp.predict([x], return_std=True)
+        return mu + 2 * sigma  # Exploration factor
+    
+    # Sample next point
+    candidates = np.random.rand(1000, 2)
+    candidates[:, 0] *= 1.0  # Temperature 0-1
+    candidates[:, 1] = candidates[:, 1] * 8000 + 2000  # Tokens 2000-10000
+    
+    scores = [acquisition(c) for c in candidates]
+    next_params = candidates[np.argmax(scores)]
+    
+    # Evaluate
+    result = objective_function(next_params)
+    
+    X_observed.append(next_params)
+    y_observed.append(result)
+    
+    print(f"Iteration {iteration}: temp={next_params[0]:.2f}, "
+          f"tokens={int(next_params[1])}, success={result:.3f}")
+
+# Best found
+best_idx = np.argmax(y_observed)
+print(f"\nBest: temp={X_observed[best_idx][0]:.2f}, "
+      f"tokens={int(X_observed[best_idx][1])}, "
+      f"success={y_observed[best_idx]:.3f}")
+```
+
+### Adaptive Sweeps
+
+Focus on promising regions:
+
+```python
+def adaptive_sweep():
+    # Phase 1: Coarse grid
+    coarse_temps = [0.0, 0.5, 1.0]
+    coarse_results = run_sweep(temperatures=coarse_temps)
+    
+    # Find best region
+    best_temp = coarse_results.loc[coarse_results["success_rate"].idxmax()]["temperature"]
+    
+    # Phase 2: Fine-grained search around best
+    fine_temps = np.linspace(max(0, best_temp - 0.3), 
+                             min(1, best_temp + 0.3), 
+                             num=11)
+    fine_results = run_sweep(temperatures=fine_temps)
+    
+    return fine_results
+```
+
+## Cost Optimization
+
+### Subset Evaluation
+
+Test on small subset first:
+
+```yaml
+# Quick sweep on 20 tasks
+dataset:
+  registry:
+    name: terminal-bench@2.0
+    max_tasks: 20
+
+sweep:
+  agent:
+    name: ["claude-code", "aider", "openhands"]
+  model:
+    - "anthropic/claude-opus-4-1"
+    - "anthropic/claude-sonnet-4"
+```
+
+Then run full evaluation on top performers only.
+
+### Early Stopping
+
+Stop poor configurations early:
+
+```python
+def run_with_early_stopping(config, eval_tasks, threshold=0.3):
+    # Run on first 20% of tasks
+    sample_size = int(len(eval_tasks) * 0.2)
+    sample_result = run_harbor_job(config, tasks=eval_tasks[:sample_size])
+    
+    # Early stop if poor performance
+    if sample_result["stats"]["mean_reward"] < threshold:
+        print(f"Early stopping config {config}: {sample_result['stats']['mean_reward']:.2f} < {threshold}")
+        return sample_result
+    
+    # Continue with full evaluation
+    return run_harbor_job(config, tasks=eval_tasks)
+```
+
+## Best Practices
+
+1. **Start small**: Use subset of tasks for initial sweeps
+2. **One variable at a time**: Change one parameter when possible
+3. **Multiple seeds**: Run key configs multiple times for variance
+4. **Document findings**: Track insights in markdown/notebook
+5. **Version control**: Save sweep configs and results
+6. **Monitor costs**: Track spending during sweeps
+7. **Use cloud**: Leverage parallelization for faster sweeps
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="RL Optimization" icon="brain" href="/examples/rl-optimization">
+    Use sweep results for RL training
+  </Card>
+  <Card title="Custom Metrics" icon="chart-line" href="/examples/custom-metrics">
+    Define custom success metrics
+  </Card>
+  <Card title="Parallel Execution" icon="bolt" href="/guides/parallel-execution">
+    Optimize sweep performance
+  </Card>
+  <Card title="Cloud Execution" icon="cloud" href="/guides/cloud-execution">
+    Scale sweeps to the cloud
+  </Card>
+</CardGroup>

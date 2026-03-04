@@ -1,0 +1,585 @@
+---
+title: Environments
+description: Understanding execution environments in Harbor
+---
+
+## Overview
+
+**Environments** are containerized workspaces where agents execute tasks. They provide isolated, reproducible execution contexts with controlled resources, dependencies, and network access.
+
+Harbor supports multiple environment providers, from local Docker to cloud platforms like Modal and Daytona, all unified under the `BaseEnvironment` interface.
+
+## BaseEnvironment Interface
+
+All environments implement the abstract `BaseEnvironment` class defined in `src/harbor/environments/base.py`:
+
+```python
+from abc import ABC, abstractmethod
+from pathlib import Path
+
+class BaseEnvironment(ABC):
+    environment_dir: Path
+    environment_name: str
+    session_id: str
+    trial_paths: TrialPaths
+    task_env_config: EnvironmentConfig
+    logger: logging.Logger
+
+    @staticmethod
+    @abstractmethod
+    def type() -> EnvironmentType:
+        """The environment type."""
+
+    @property
+    @abstractmethod
+    def is_mounted(self) -> bool:
+        """Whether the environment mounts the logging directories."""
+
+    @property
+    @abstractmethod
+    def supports_gpus(self) -> bool:
+        """Whether this environment type supports GPU allocation."""
+
+    @property
+    @abstractmethod
+    def can_disable_internet(self) -> bool:
+        """Whether this environment type supports disabling internet access."""
+
+    @abstractmethod
+    async def start(self, force_build: bool) -> None:
+        """Starts the environment and optionally forces a build."""
+
+    @abstractmethod
+    async def stop(self, delete: bool):
+        """Stops the environment and optionally deletes it."""
+
+    @abstractmethod
+    async def upload_file(self, source_path: Path | str, target_path: str):
+        """Adds a local file to the environment."""
+
+    @abstractmethod
+    async def upload_dir(self, source_dir: Path | str, target_dir: str):
+        """Adds a local directory to the environment."""
+
+    @abstractmethod
+    async def download_file(self, source_path: str, target_path: Path | str):
+        """Downloads a file from the environment to the local machine."""
+
+    @abstractmethod
+    async def download_dir(self, source_dir: str, target_dir: Path | str):
+        """Downloads a directory from the environment to the local machine."""
+
+    @abstractmethod
+    async def exec(
+        self,
+        command: str,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: int | None = None,
+    ) -> ExecResult:
+        """Executes a command in the environment."""
+```
+
+## Environment Types
+
+Harbor supports several environment providers:
+
+### Docker (Local)
+
+Default environment using local Docker:
+
+```bash
+harber run --environment docker --dataset terminal-bench@2.0
+```
+
+**Features:**
+- Local execution
+- Full control over resources
+- Supports GPU (with nvidia-docker)
+- Can disable internet access
+- Mounts log directories
+
+### Daytona
+
+Cloud execution via Daytona:
+
+```bash
+harber run --environment daytona --dataset terminal-bench@2.0
+```
+
+**Features:**
+- Cloud-based execution
+- Scalable parallel runs
+- Managed infrastructure
+- Network isolation options
+
+### E2B
+
+E2B sandbox environment:
+
+```bash
+harber run --environment e2b --dataset terminal-bench@2.0
+```
+
+**Features:**
+- Secure sandboxing
+- Fast startup times
+- API-based access
+
+### Modal
+
+Serverless cloud execution:
+
+```bash
+harber run --environment modal --dataset terminal-bench@2.0
+```
+
+**Features:**
+- Serverless infrastructure
+- GPU support
+- Automatic scaling
+- Pay-per-use pricing
+
+### Runloop
+
+Runloop environment:
+
+```bash
+harber run --environment runloop --dataset terminal-bench@2.0
+```
+
+### GKE (Google Kubernetes Engine)
+
+Kubernetes-based execution:
+
+```bash
+harber run --environment gke --dataset terminal-bench@2.0
+```
+
+**Features:**
+- Kubernetes orchestration
+- Enterprise-grade reliability
+- Advanced resource management
+
+## ExecResult
+
+Command execution returns an `ExecResult` object:
+
+```python
+class ExecResult(BaseModel):
+    stdout: str | None = None
+    stderr: str | None = None
+    return_code: int
+```
+
+Example usage:
+
+```python
+result = await environment.exec("ls -la")
+if result.return_code == 0:
+    print(f"Files: {result.stdout}")
+else:
+    print(f"Error: {result.stderr}")
+```
+
+## Resource Configuration
+
+Environments are configured through `EnvironmentConfig` in `task.toml`:
+
+```toml
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 20480
+gpus = 1
+gpu_types = ["H100", "A100"]
+allow_internet = true
+```
+
+### EnvironmentConfig Model
+
+```python
+class EnvironmentConfig(BaseModel):
+    build_timeout_sec: float = 600.0
+    docker_image: str | None = None
+    cpus: int = 1
+    memory_mb: int = 2048
+    storage_mb: int = 10240
+    gpus: int = 0
+    gpu_types: list[str] | None = None
+    allow_internet: bool = True
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
+    skills_dir: str | None = None
+```
+
+### Field Descriptions
+
+- `build_timeout_sec`: Maximum time to build the environment
+- `docker_image`: Pre-built image to use (skips Dockerfile build)
+- `cpus`: Number of CPU cores
+- `memory_mb`: Memory allocation in megabytes
+- `storage_mb`: Storage allocation in megabytes
+- `gpus`: Number of GPUs to allocate
+- `gpu_types`: Acceptable GPU types (e.g., `["H100", "A100", "T4"]`)
+- `allow_internet`: Whether to allow internet access
+- `mcp_servers`: MCP servers available in the environment
+- `skills_dir`: Path to skills directory
+
+## Resource Overrides
+
+Override task resources at runtime:
+
+```bash
+harber run \
+  --dataset terminal-bench@2.0 \
+  --override-cpus 4 \
+  --override-memory-mb 8192
+```
+
+<Warning>
+Overriding resources may disqualify results from official leaderboards, as it changes the task specification.
+</Warning>
+
+The override system validates changes:
+
+```python
+def _maybe_override_task_env_config(self):
+    if self._override_cpus is not None:
+        self.task_env_config.cpus = self._override_cpus
+        if not self._suppress_override_warnings:
+            self.logger.warning(
+                f"Overriding CPU count to {self._override_cpus} alters the "
+                "task from its intended configuration. This could disqualify you "
+                "from leaderboard submissions for some benchmarks."
+            )
+```
+
+## GPU Support
+
+Not all environments support GPUs. Harbor validates GPU requirements:
+
+```python
+def _validate_gpu_support(self):
+    if self.task_env_config.gpus > 0 and not self.supports_gpus:
+        raise RuntimeError(
+            f"Task requires {self.task_env_config.gpus} GPU(s) but "
+            f"{self.type().value} environment does not support GPU allocation. "
+            f"Please use a GPU-capable environment type (e.g., Modal, Docker "
+            f"with nvidia-docker)."
+        )
+```
+
+**GPU-capable environments:**
+- Docker (with nvidia-docker)
+- Modal
+- GKE
+
+## Internet Access Control
+
+Some benchmarks require isolated environments:
+
+```toml
+[environment]
+allow_internet = false
+```
+
+Harbor validates this capability:
+
+```python
+def _validate_internet_config(self):
+    if not self.task_env_config.allow_internet and not self.can_disable_internet:
+        raise ValueError(
+            f"allow_internet=False is not supported by {self.type().value} environment."
+        )
+```
+
+**Environments supporting internet control:**
+- Docker
+- Some cloud providers (check documentation)
+
+## File Operations
+
+### Upload Files
+
+Copy local files to the environment:
+
+```python
+# Single file
+await environment.upload_file(
+    source_path="./config.json",
+    target_path="/app/config.json"
+)
+
+# Directory
+await environment.upload_dir(
+    source_dir="./source_code",
+    target_dir="/app/src"
+)
+```
+
+### Download Files
+
+Retrieve files from the environment:
+
+```python
+# Single file
+await environment.download_file(
+    source_path="/app/results.json",
+    target_path="./results.json"
+)
+
+# Directory
+await environment.download_dir(
+    source_dir="/logs",
+    target_dir="./trial_logs"
+)
+```
+
+## Command Execution
+
+### Basic Execution
+
+```python
+result = await environment.exec("python script.py")
+print(f"Exit code: {result.return_code}")
+```
+
+### With Working Directory
+
+```python
+result = await environment.exec(
+    "pytest tests/",
+    cwd="/app"
+)
+```
+
+### With Environment Variables
+
+```python
+result = await environment.exec(
+    "python train.py",
+    env={"PYTHONPATH": "/app/src", "CUDA_VISIBLE_DEVICES": "0"}
+)
+```
+
+### With Timeout
+
+```python
+try:
+    result = await environment.exec(
+        "long_running_task",
+        timeout_sec=300
+    )
+except TimeoutError:
+    print("Task timed out after 5 minutes")
+```
+
+## Filesystem Utilities
+
+Check paths in the environment:
+
+```python
+# Check if directory exists
+if await environment.is_dir("/app/data"):
+    print("Data directory found")
+
+# Check if file exists
+if await environment.is_file("/app/config.json"):
+    print("Config file found")
+```
+
+Default implementations use shell commands:
+
+```python
+async def is_dir(self, path: str) -> bool:
+    result = await self.exec(f"test -d {shlex.quote(path)}", timeout_sec=10)
+    return result.return_code == 0
+
+async def is_file(self, path: str) -> bool:
+    result = await self.exec(f"test -f {shlex.quote(path)}", timeout_sec=10)
+    return result.return_code == 0
+```
+
+## Mounted vs Non-Mounted
+
+The `is_mounted` property determines how logs are handled:
+
+### Mounted Environments
+
+Log directories are mounted from the host:
+- Docker (typically)
+- Local environments
+
+Logs are immediately available on the host filesystem.
+
+### Non-Mounted Environments
+
+Logs must be downloaded:
+- E2B
+- Modal
+- Cloud environments
+
+Logs are retrieved via `download_dir()` after execution.
+
+```python
+if not self._environment.is_mounted:
+    await self._environment.download_dir(
+        source_dir="/logs/verifier",
+        target_dir=self._trial_paths.verifier_dir
+    )
+```
+
+## Environment Lifecycle
+
+### Typical Workflow
+
+```python
+# 1. Create environment
+environment = EnvironmentFactory.create(
+    environment_type=EnvironmentType.DOCKER,
+    environment_dir=task.environment_dir,
+    environment_name=task.name,
+    session_id=trial_id,
+    trial_paths=trial_paths,
+    task_env_config=task.config.environment
+)
+
+# 2. Start environment
+await environment.start(force_build=False)
+
+# 3. Setup agent
+await agent.setup(environment)
+
+# 4. Run agent
+await agent.run(instruction, environment, context)
+
+# 5. Run verifier
+await verifier.verify()
+
+# 6. Stop and cleanup
+await environment.stop(delete=True)
+```
+
+## Creating Custom Environments
+
+### Step 1: Implement BaseEnvironment
+
+```python
+from harbor.environments.base import BaseEnvironment
+from harbor.models.environment_type import EnvironmentType
+
+class MyCustomEnvironment(BaseEnvironment):
+    @staticmethod
+    def type() -> EnvironmentType:
+        return EnvironmentType.CUSTOM
+
+    @property
+    def is_mounted(self) -> bool:
+        return False
+
+    @property
+    def supports_gpus(self) -> bool:
+        return True
+
+    @property
+    def can_disable_internet(self) -> bool:
+        return True
+
+    def _validate_definition(self):
+        if not (self.environment_dir / "Dockerfile").exists():
+            raise FileNotFoundError("Dockerfile not found")
+
+    async def start(self, force_build: bool) -> None:
+        # Implementation
+        pass
+
+    async def stop(self, delete: bool):
+        # Implementation
+        pass
+
+    async def exec(
+        self,
+        command: str,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: int | None = None,
+    ) -> ExecResult:
+        # Implementation
+        pass
+
+    # Implement remaining abstract methods...
+```
+
+### Step 2: Register Environment Type
+
+Add to `src/harbor/models/environment_type.py`:
+
+```python
+class EnvironmentType(str, Enum):
+    # ... existing types ...
+    CUSTOM = "custom"
+```
+
+### Step 3: Update Factory
+
+Register in `src/harbor/environments/factory.py`:
+
+```python
+from harbor.environments.custom import MyCustomEnvironment
+
+class EnvironmentFactory:
+    _ENVIRONMENT_MAP = {
+        # ... existing environments ...
+        EnvironmentType.CUSTOM: MyCustomEnvironment,
+    }
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Resource Allocation">
+    - Allocate resources based on actual task needs
+    - Don't over-provision (increases costs)
+    - Don't under-provision (causes failures)
+    - Test with minimal resources first
+  </Accordion>
+
+  <Accordion title="Network Access">
+    - Disable internet when possible for reproducibility
+    - Document when internet access is required
+    - Use allow-lists for specific endpoints
+    - Consider offline alternatives
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    - Always clean up environments (use try/finally)
+    - Handle timeout errors gracefully
+    - Log environment setup failures
+    - Provide actionable error messages
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Cache built images when possible
+    - Use pre-built images for common setups
+    - Minimize upload/download operations
+    - Optimize Dockerfiles for build speed
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Tasks" icon="list-check" href="./tasks">
+    Task structure and configuration
+  </Card>
+  <Card title="Agents" icon="robot" href="./agents">
+    Agents that execute in environments
+  </Card>
+  <Card title="Trials" icon="flask" href="./trials-and-jobs">
+    Trial execution workflow
+  </Card>
+  <Card title="Verifiers" icon="check-circle" href="./verifiers">
+    Verification in environments
+  </Card>
+</CardGroup>

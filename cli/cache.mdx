@@ -1,0 +1,395 @@
+---
+title: harbor cache
+description: Manage Harbor cache and clean up resources
+---
+
+The `harbor cache` command group provides utilities for managing Harbor's cache, including downloaded datasets, Docker images, and temporary files.
+
+## Commands
+
+### harbor cache clean
+
+Clean Harbor cache by removing Docker images and the cache directory.
+
+```bash
+harbor cache clean [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="-f, --force" type="boolean">
+  Skip confirmation prompt and clean immediately. Default: `false`
+</ParamField>
+
+<ParamField path="--dry" type="boolean">
+  Show what would be cleaned without actually cleaning. Default: `false`
+</ParamField>
+
+<ParamField path="--no-docker" type="boolean">
+  Skip Docker image cleanup. Default: `false`
+</ParamField>
+
+<ParamField path="--no-cache-dir" type="boolean">
+  Skip cache directory cleanup. Default: `false`
+</ParamField>
+
+#### Examples
+
+Clean cache with confirmation:
+
+```bash
+harbor cache clean
+```
+
+Clean without confirmation:
+
+```bash
+harbor cache clean --force
+```
+
+Dry run to see what would be cleaned:
+
+```bash
+harbor cache clean --dry
+```
+
+Clean only Docker images:
+
+```bash
+harbor cache clean --no-cache-dir
+```
+
+Clean only cache directory:
+
+```bash
+harbor cache clean --no-docker
+```
+
+## What Gets Cleaned
+
+### Cache Directory
+
+**Location**: `~/.cache/harbor/`
+
+Contains:
+- **tasks/**: Downloaded datasets and tasks
+- **jobs/**: Job results (only if inside cache)
+- **registry/**: Cached registry metadata
+- **environments/**: Environment build caches
+
+Example structure:
+```
+~/.cache/harbor/
+├── tasks/
+│   ├── terminal-bench@2.0/
+│   ├── swe-bench@lite/
+│   └── ...
+├── jobs/
+│   ├── my-job-20260303-120000/
+│   └── ...
+└── registry/
+    └── cache.json
+```
+
+### Docker Images
+
+The command removes Docker images matching these patterns:
+- `alexgshaw/*` - Harbor base images
+- `hb__*` - Harbor environment images (prefix: "harbor build")
+- `sb__*` - Sandbox environment images (prefix: "sandbox build")
+
+Example images:
+```
+alexgshaw/harbor-base:latest
+hb__task-001:latest
+hb__terminal-bench-task-123:latest
+sb__custom-env:latest
+```
+
+## Usage Examples
+
+### Basic Cleanup
+
+Clean everything with confirmation:
+
+```bash
+harbor cache clean
+```
+
+Output:
+```
+Harbor Cache Cleanup
+
+Cache directory: /home/user/.cache/harbor
+Cache size: 2048.50 MB
+
+Docker images to remove: 15 image(s)
+  • alexgshaw/harbor-base:latest
+  • hb__task-001:latest
+  • hb__task-002:latest
+  ...
+
+Proceed with cleanup? (y/N): y
+
+✓ Removed cache directory: /home/user/.cache/harbor
+✓ Removed 15 Docker image(s)
+
+✓ Cache cleanup completed
+```
+
+### Check Before Cleaning
+
+Use dry run to see what would be removed:
+
+```bash
+harbor cache clean --dry
+```
+
+Output:
+```
+Harbor Cache Cleanup
+
+DRY RUN - No changes will be made
+
+Cache directory: /home/user/.cache/harbor
+Cache size: 2048.50 MB
+
+Docker images to remove: 15 image(s)
+  • alexgshaw/harbor-base:latest
+  • hb__task-001:latest
+  ...
+
+✓ Dry run completed (no changes made)
+```
+
+### Automated Cleanup
+
+Clean without prompts (useful for scripts):
+
+```bash
+harbor cache clean --force
+```
+
+### Selective Cleanup
+
+Clean only Docker images (preserve downloaded tasks):
+
+```bash
+harbor cache clean --no-cache-dir
+```
+
+Clean only cache directory (preserve Docker images):
+
+```bash
+harbor cache clean --no-docker
+```
+
+## When to Clean Cache
+
+### Free Up Disk Space
+
+Docker images and cached tasks can consume significant storage:
+
+```bash
+# Check disk usage
+du -sh ~/.cache/harbor
+docker images | grep -E "alexgshaw|hb__|sb__" | wc -l
+
+# Clean up
+harbor cache clean
+```
+
+### After Evaluations
+
+Clean up after completing evaluations:
+
+```bash
+# Run evaluation
+harbor run --dataset terminal-bench@2.0 --agent claude-code
+
+# Clean up (keep results)
+mv ~/.cache/harbor/jobs/my-job-20260303-120000 ./results/
+harbor cache clean
+```
+
+### Before Major Updates
+
+Clean cache before updating Harbor:
+
+```bash
+# Clean old cache
+harbor cache clean --force
+
+# Update Harbor
+uv tool upgrade harbor
+
+# Re-download needed datasets
+harbor datasets download terminal-bench@2.0
+```
+
+### Development Workflow
+
+Clean frequently during development:
+
+```bash
+# After testing
+harbor cache clean --force
+
+# Or just Docker images
+harbor cache clean --no-cache-dir --force
+```
+
+## Advanced Usage
+
+### Preserve Specific Jobs
+
+Move important job results before cleaning:
+
+```bash
+# Move important results
+mkdir -p ./important-results
+cp -r ~/.cache/harbor/jobs/critical-eval-* ./important-results/
+
+# Clean cache
+harbor cache clean --force
+
+# Results preserved in ./important-results
+```
+
+### Scheduled Cleanup
+
+Automate cache cleanup with cron:
+
+```bash
+# Add to crontab (clean weekly on Sunday at 2am)
+0 2 * * 0 /usr/local/bin/harbor cache clean --force
+```
+
+### Selective Docker Cleanup
+
+Clean only old Docker images:
+
+```bash
+# Remove images older than 7 days
+docker image prune --all --filter "until=168h" --filter "label=harbor=true"
+
+# Or use Harbor's cleanup
+harbor cache clean --no-cache-dir
+```
+
+### Monitor Cache Size
+
+Check cache size before and after:
+
+```bash
+# Before
+du -sh ~/.cache/harbor
+docker images | grep -E "alexgshaw|hb__|sb__"
+
+# Clean
+harbor cache clean --dry
+
+# After
+du -sh ~/.cache/harbor
+docker images | grep -E "alexgshaw|hb__|sb__"
+```
+
+## Troubleshooting
+
+### Docker Cleanup Fails
+
+If Docker cleanup fails:
+
+```bash
+# Check Docker is running
+docker ps
+
+# Manually remove images
+docker rmi $(docker images | grep -E "alexgshaw|hb__|sb__" | awk '{print $3}')
+
+# Or force remove
+docker rmi -f $(docker images | grep -E "alexgshaw|hb__|sb__" | awk '{print $3}')
+```
+
+### Permission Issues
+
+If cache directory cleanup fails:
+
+```bash
+# Check permissions
+ls -la ~/.cache/harbor
+
+# Fix permissions
+sudo chown -R $USER:$USER ~/.cache/harbor
+
+# Try again
+harbor cache clean
+```
+
+### Partial Cleanup
+
+If cleanup is interrupted:
+
+```bash
+# Check what remains
+ls -la ~/.cache/harbor
+docker images | grep -E "alexgshaw|hb__|sb__"
+
+# Clean again
+harbor cache clean --force
+```
+
+## Best Practices
+
+### Regular Cleanup
+
+Clean cache periodically:
+
+```bash
+# Weekly cleanup (keep important results)
+harbor cache clean --force
+```
+
+### Before Long-Running Jobs
+
+Clean cache to ensure enough disk space:
+
+```bash
+# Check available space
+df -h
+
+# Clean if needed
+harbor cache clean --force
+
+# Run job
+harbor run --dataset large-benchmark --agent claude-code
+```
+
+### Development Iterations
+
+Clean frequently during development:
+
+```bash
+# After each test iteration
+harbor cache clean --no-cache-dir --force  # Keep datasets
+```
+
+### CI/CD Integration
+
+Clean cache in CI/CD pipelines:
+
+```yaml
+# .github/workflows/test.yml
+steps:
+  - name: Clean Harbor cache
+    run: harbor cache clean --force
+    
+  - name: Run tests
+    run: harbor run --config test-config.yaml
+```
+
+## See Also
+
+- [harbor datasets](/cli/datasets) - Download datasets
+- [harbor run](/cli/run) - Run evaluations
+- [harbor jobs](/cli/jobs) - Manage jobs

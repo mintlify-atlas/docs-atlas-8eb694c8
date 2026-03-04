@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Harbor",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#105864",
+    "light": "#1a7a8a",
+    "dark": "#0d4450"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/harbor-framework/harbor"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/harbor-framework/harbor"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/tasks",
+              "concepts/agents",
+              "concepts/environments",
+              "concepts/trials-and-jobs",
+              "concepts/verifiers",
+              "concepts/metrics"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/running-evaluations",
+              "guides/cloud-execution",
+              "guides/creating-tasks",
+              "guides/custom-agents",
+              "guides/benchmark-adapters",
+              "guides/parallel-execution"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Supported Integrations",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "integrations/agents",
+              "integrations/environments",
+              "integrations/benchmarks"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "CLI Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Commands",
             "pages": [
-              "api-reference/introduction"
+              "cli/run",
+              "cli/jobs",
+              "cli/trials",
+              "cli/tasks",
+              "cli/datasets",
+              "cli/adapters",
+              "cli/traces",
+              "cli/sweeps",
+              "cli/cache",
+              "cli/view"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/job",
+              "api/base-agent",
+              "api/base-environment",
+              "api/agent-context"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Configuration",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/job-config",
+              "api/task-config",
+              "api/trial-config"
+            ]
+          },
+          {
+            "group": "Results & Metrics",
+            "pages": [
+              "api/job-result",
+              "api/trial-result",
+              "api/metrics"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Evaluation Examples",
+            "pages": [
+              "examples/terminal-bench",
+              "examples/swe-bench",
+              "examples/custom-benchmark"
+            ]
+          },
+          {
+            "group": "Advanced Usage",
+            "pages": [
+              "examples/rl-optimization",
+              "examples/parameter-sweeps",
+              "examples/custom-metrics"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

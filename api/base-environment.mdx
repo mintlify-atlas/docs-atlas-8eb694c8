@@ -1,0 +1,419 @@
+---
+title: BaseEnvironment
+description: Abstract base class for containerized execution environments
+---
+
+## Overview
+
+The `BaseEnvironment` abstract class defines the interface for containerized environments where agents execute tasks. Harbor supports multiple environment backends including Docker, Daytona, E2B, Modal, and GKE.
+
+**Import:** `from harbor.environments.base import BaseEnvironment`
+
+## Class Attributes
+
+<ParamField path="environment_dir" type="Path" required>
+  Path to the environment directory containing definition files (e.g., `docker-compose.yaml`).
+</ParamField>
+
+<ParamField path="environment_name" type="str" required>
+  The name of the environment, typically the task name.
+</ParamField>
+
+<ParamField path="session_id" type="str" required>
+  Unique session identifier for this environment instance, typically the trial name.
+</ParamField>
+
+<ParamField path="trial_paths" type="TrialPaths" required>
+  Path configuration for the trial.
+</ParamField>
+
+<ParamField path="task_env_config" type="EnvironmentConfig" required>
+  Environment configuration from the task definition.
+</ParamField>
+
+<ParamField path="logger" type="logging.Logger" required>
+  Logger instance for the environment.
+</ParamField>
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    environment_dir: Path,
+    environment_name: str,
+    session_id: str,
+    trial_paths: TrialPaths,
+    task_env_config: EnvironmentConfig,
+    logger: logging.Logger | None = None,
+    override_cpus: int | None = None,
+    override_memory_mb: int | None = None,
+    override_storage_mb: int | None = None,
+    override_gpus: int | None = None,
+    suppress_override_warnings: bool = False,
+    *args,
+    **kwargs,
+)
+```
+
+<ParamField path="environment_dir" type="Path" required>
+  Path to the environment directory.
+</ParamField>
+
+<ParamField path="environment_name" type="str" required>
+  Name of the environment.
+</ParamField>
+
+<ParamField path="session_id" type="str" required>
+  Session ID for this instance.
+</ParamField>
+
+<ParamField path="trial_paths" type="TrialPaths" required>
+  Trial paths configuration.
+</ParamField>
+
+<ParamField path="task_env_config" type="EnvironmentConfig" required>
+  Environment configuration from task.
+</ParamField>
+
+<ParamField path="logger" type="logging.Logger | None">
+  Optional logger instance.
+</ParamField>
+
+<ParamField path="override_cpus" type="int | None">
+  Override CPU allocation. Warning: May disqualify from leaderboards.
+</ParamField>
+
+<ParamField path="override_memory_mb" type="int | None">
+  Override memory allocation in MB. Warning: May disqualify from leaderboards.
+</ParamField>
+
+<ParamField path="override_storage_mb" type="int | None">
+  Override storage allocation in MB. Warning: May disqualify from leaderboards.
+</ParamField>
+
+<ParamField path="override_gpus" type="int | None">
+  Override GPU allocation. Warning: May disqualify from leaderboards.
+</ParamField>
+
+<ParamField path="suppress_override_warnings" type="bool" default="False">
+  Suppress warnings about resource overrides.
+</ParamField>
+
+## Abstract Methods
+
+### type
+
+```python
+@staticmethod
+@abstractmethod
+def type() -> EnvironmentType
+```
+
+Returns the environment type (e.g., `DOCKER`, `DAYTONA`, `MODAL`).
+
+<ResponseField name="type" type="EnvironmentType" required>
+  The environment type identifier.
+</ResponseField>
+
+### Abstract Properties
+
+```python
+@property
+@abstractmethod
+def is_mounted(self) -> bool
+```
+
+<ResponseField name="is_mounted" type="bool" required>
+  Whether the environment mounts the logging directories.
+</ResponseField>
+
+```python
+@property
+@abstractmethod
+def supports_gpus(self) -> bool
+```
+
+<ResponseField name="supports_gpus" type="bool" required>
+  Whether this environment type supports GPU allocation.
+</ResponseField>
+
+```python
+@property
+@abstractmethod
+def can_disable_internet(self) -> bool
+```
+
+<ResponseField name="can_disable_internet" type="bool" required>
+  Whether this environment type supports disabling internet access.
+</ResponseField>
+
+### start
+
+```python
+@abstractmethod
+async def start(self, force_build: bool) -> None
+```
+
+Starts the environment and optionally forces a rebuild.
+
+<ParamField path="force_build" type="bool" required>
+  Whether to force a rebuild of the environment.
+</ParamField>
+
+### stop
+
+```python
+@abstractmethod
+async def stop(self, delete: bool) -> None
+```
+
+Stops the environment and optionally deletes it.
+
+<ParamField path="delete" type="bool" required>
+  Whether to delete the environment after stopping.
+</ParamField>
+
+### File Operations
+
+#### upload_file
+
+```python
+@abstractmethod
+async def upload_file(self, source_path: Path | str, target_path: str) -> None
+```
+
+<ParamField path="source_path" type="Path | str" required>
+  Local file path to upload.
+</ParamField>
+
+<ParamField path="target_path" type="str" required>
+  Target path in the environment.
+</ParamField>
+
+#### upload_dir
+
+```python
+@abstractmethod
+async def upload_dir(self, source_dir: Path | str, target_dir: str) -> None
+```
+
+<ParamField path="source_dir" type="Path | str" required>
+  Local directory to upload.
+</ParamField>
+
+<ParamField path="target_dir" type="str" required>
+  Target directory in the environment.
+</ParamField>
+
+#### download_file
+
+```python
+@abstractmethod
+async def download_file(self, source_path: str, target_path: Path | str) -> None
+```
+
+<ParamField path="source_path" type="str" required>
+  File path in the environment.
+</ParamField>
+
+<ParamField path="target_path" type="Path | str" required>
+  Local target path.
+</ParamField>
+
+#### download_dir
+
+```python
+@abstractmethod
+async def download_dir(self, source_dir: str, target_dir: Path | str) -> None
+```
+
+Downloads a directory from the environment. Overwrites existing files.
+
+<ParamField path="source_dir" type="str" required>
+  Directory path in the environment.
+</ParamField>
+
+<ParamField path="target_dir" type="Path | str" required>
+  Local target directory.
+</ParamField>
+
+### exec
+
+```python
+@abstractmethod
+async def exec(
+    self,
+    command: str,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout_sec: int | None = None,
+) -> ExecResult
+```
+
+Executes a command in the environment.
+
+<ParamField path="command" type="str" required>
+  The command to execute.
+</ParamField>
+
+<ParamField path="cwd" type="str | None">
+  Working directory for command execution.
+</ParamField>
+
+<ParamField path="env" type="dict[str, str] | None">
+  Environment variables to set.
+</ParamField>
+
+<ParamField path="timeout_sec" type="int | None">
+  Command timeout in seconds.
+</ParamField>
+
+<ResponseField name="ExecResult" type="ExecResult">
+  Result containing stdout, stderr, and return code.
+</ResponseField>
+
+## Concrete Methods
+
+### is_dir
+
+```python
+async def is_dir(self, path: str) -> bool
+```
+
+Checks if a remote path is a directory.
+
+<ParamField path="path" type="str" required>
+  Path to check in the environment.
+</ParamField>
+
+<ResponseField name="is_directory" type="bool">
+  True if path exists and is a directory.
+</ResponseField>
+
+### is_file
+
+```python
+async def is_file(self, path: str) -> bool
+```
+
+Checks if a remote path is a regular file.
+
+<ParamField path="path" type="str" required>
+  Path to check in the environment.
+</ParamField>
+
+<ResponseField name="is_file" type="bool">
+  True if path exists and is a regular file.
+</ResponseField>
+
+### attach
+
+```python
+async def attach(self) -> None
+```
+
+Attaches to the environment using `os.execvp`. Not supported by all environment types.
+
+**Raises:** `NotImplementedError` if the environment doesn't support attaching.
+
+## ExecResult Model
+
+```python
+class ExecResult(BaseModel):
+    stdout: str | None = None
+    stderr: str | None = None
+    return_code: int
+```
+
+<ParamField path="stdout" type="str | None">
+  Standard output from the command.
+</ParamField>
+
+<ParamField path="stderr" type="str | None">
+  Standard error from the command.
+</ParamField>
+
+<ParamField path="return_code" type="int" required>
+  Exit code from the command.
+</ParamField>
+
+## Example Implementation
+
+```python
+from pathlib import Path
+from harbor.environments.base import BaseEnvironment, ExecResult
+from harbor.models.environment_type import EnvironmentType
+from harbor.models.task.config import EnvironmentConfig
+from harbor.models.trial.paths import TrialPaths
+
+class MyCustomEnvironment(BaseEnvironment):
+    """Custom environment implementation."""
+    
+    @staticmethod
+    def type() -> EnvironmentType:
+        return EnvironmentType.CUSTOM
+    
+    @property
+    def is_mounted(self) -> bool:
+        return True
+    
+    @property
+    def supports_gpus(self) -> bool:
+        return False
+    
+    @property
+    def can_disable_internet(self) -> bool:
+        return True
+    
+    def _validate_definition(self):
+        # Check that required environment files exist
+        if not (self.environment_dir / "Dockerfile").exists():
+            raise FileNotFoundError("Dockerfile not found")
+    
+    async def start(self, force_build: bool) -> None:
+        # Start the environment
+        self.logger.info(f"Starting environment {self.session_id}")
+        # Implementation details...
+    
+    async def stop(self, delete: bool) -> None:
+        # Stop and optionally delete the environment
+        self.logger.info(f"Stopping environment {self.session_id}")
+        # Implementation details...
+    
+    async def exec(
+        self,
+        command: str,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: int | None = None,
+    ) -> ExecResult:
+        # Execute command in environment
+        # Implementation details...
+        return ExecResult(
+            stdout="command output",
+            stderr=None,
+            return_code=0
+        )
+    
+    async def upload_file(self, source_path: Path | str, target_path: str):
+        # Upload file to environment
+        pass
+    
+    async def upload_dir(self, source_dir: Path | str, target_dir: str):
+        # Upload directory to environment
+        pass
+    
+    async def download_file(self, source_path: str, target_path: Path | str):
+        # Download file from environment
+        pass
+    
+    async def download_dir(self, source_dir: str, target_dir: Path | str):
+        # Download directory from environment
+        pass
+```
+
+## Related Types
+
+- [EnvironmentConfig](/api/task-config#environmentconfig) - Environment configuration
+- [BaseAgent](/api/base-agent) - Agent interface

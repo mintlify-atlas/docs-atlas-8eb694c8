@@ -1,0 +1,344 @@
+---
+title: Supported Agents
+description: Complete list of AI agents supported by Harbor for evaluation
+---
+
+Harbor supports a wide range of AI coding agents for evaluation. Each agent can be run against any benchmark in the Harbor framework.
+
+## Agent List
+
+Harbor provides built-in support for the following agents:
+
+<CardGroup cols={2}>
+  <Card title="Claude Code" icon="code">
+    **Provider:** Anthropic
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** Yes
+    
+    Anthropic's official Claude coding assistant with native function calling, extended thinking, and MCP server support.
+    
+    **Key Features:**
+    - Extended thinking with configurable max thinking tokens
+    - Native trajectory export in ATIF format
+    - MCP server integration
+    - Skills support
+    - Bedrock mode for AWS deployment
+    - Configurable max turns
+  </Card>
+
+  <Card title="OpenHands" icon="hand">
+    **Provider:** All Hands AI
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** Yes
+    
+    Open-source AI agent with comprehensive tool calling and multi-modal support.
+    
+    **Key Features:**
+    - Native function calling toggle
+    - Raw content trajectory mode
+    - MCP server support
+    - Configurable reasoning effort
+    - Multi-provider support (OpenAI, Anthropic, Azure, etc.)
+  </Card>
+
+  <Card title="OpenHands SDK" icon="code-branch">
+    **Provider:** All Hands AI
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    SDK-based version of OpenHands for programmatic integration.
+  </Card>
+
+  <Card title="Aider" icon="terminal">
+    **Provider:** aider.chat
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    AI pair programming agent focused on editing existing codebases.
+    
+    **Key Features:**
+    - Multi-provider support (OpenAI, Anthropic)
+    - Repository-aware editing
+    - Git integration
+  </Card>
+
+  <Card title="Codex" icon="microchip">
+    **Provider:** OpenAI
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** Yes
+    
+    OpenAI's Codex CLI tool for code generation and problem solving.
+    
+    **Key Features:**
+    - Reasoning effort configuration
+    - Full trajectory export
+    - Extended thinking support
+  </Card>
+
+  <Card title="Goose" icon="circle-nodes">
+    **Provider:** Block
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** Yes
+    
+    Block's open-source Goose CLI agent with extensible tooling.
+    
+    **Key Features:**
+    - MCP server support
+    - Skills integration
+    - Multi-provider support (OpenAI, Anthropic, Databricks, Google)
+    - Stream JSON output format
+    - Recipe-based task definitions
+  </Card>
+
+  <Card title="Gemini CLI" icon="google">
+    **Provider:** Google
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** Yes
+    
+    Google's Gemini AI CLI tool with multi-modal capabilities.
+    
+    **Key Features:**
+    - Multi-modal support (text and images)
+    - Image handling in trajectories
+    - Native ATIF export
+  </Card>
+
+  <Card title="Cursor CLI" icon="cursor">
+    **Provider:** Cursor
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    Cursor AI's command-line coding agent.
+    
+    **Key Features:**
+    - MCP server support
+    - YOLO mode for autonomous operation
+  </Card>
+
+  <Card title="Cline CLI" icon="terminal">
+    **Provider:** Cline
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    Command-line AI coding assistant.
+  </Card>
+
+  <Card title="Qwen Coder" icon="code">
+    **Provider:** Alibaba
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    Alibaba's Qwen coding model CLI interface.
+  </Card>
+
+  <Card title="Mini SWE Agent" icon="bug">
+    **Provider:** Princeton NLP
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    Lightweight version of SWE-Agent for repository-level tasks.
+  </Card>
+
+  <Card title="SWE Agent" icon="bug-slash">
+    **Provider:** Princeton NLP
+    
+    **Type:** Installed Agent
+    
+    **ATIF Support:** No
+    
+    Full SWE-Agent implementation for software engineering tasks.
+  </Card>
+
+  <Card title="Terminus" icon="brain">
+    **Provider:** Harbor (Internal)
+    
+    **Type:** Internal Agent
+    
+    **ATIF Support:** No
+    
+    Harbor's internal Terminus agent for specialized evaluations.
+  </Card>
+
+  <Card title="Terminus-1" icon="brain">
+    **Provider:** Harbor (Internal)
+    
+    **Type:** Internal Agent
+    
+    **ATIF Support:** No
+    
+    Variant of Terminus agent.
+  </Card>
+
+  <Card title="Terminus-2" icon="brain">
+    **Provider:** Harbor (Internal)
+    
+    **Type:** Internal Agent
+    
+    **ATIF Support:** No
+    
+    Variant of Terminus agent.
+  </Card>
+
+  <Card title="Oracle" icon="check-circle">
+    **Provider:** Harbor (Utility)
+    
+    **Type:** Testing Agent
+    
+    **ATIF Support:** No
+    
+    Special agent for testing - provides ground truth solutions.
+  </Card>
+
+  <Card title="NOP" icon="circle-xmark">
+    **Provider:** Harbor (Utility)
+    
+    **Type:** Testing Agent
+    
+    **ATIF Support:** No
+    
+    No-operation agent for baseline measurements.
+  </Card>
+</CardGroup>
+
+## Agent Capabilities
+
+### ATIF Trajectory Support
+
+Agents marked with **ATIF Support: Yes** can export execution traces in the Agent Trajectory Interchange Format (ATIF), which provides:
+
+- Detailed step-by-step execution logs
+- Tool call and observation tracking
+- Token usage and cost metrics
+- Reasoning content preservation
+- Standardized format for analysis
+
+### Extended Features
+
+Many agents support advanced features:
+
+**MCP Server Integration**
+- Claude Code
+- OpenHands
+- Goose
+- Cursor CLI
+
+Allows agents to connect to Model Context Protocol servers for extended capabilities.
+
+**Skills Support**
+- Claude Code
+- Goose
+
+Enables custom skill injection for specialized tasks.
+
+**Multi-Modal Support**
+- Gemini CLI
+
+Supports image inputs and outputs in addition to text.
+
+## Usage
+
+To run an agent in Harbor:
+
+```bash
+harbor run \
+  --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --n-concurrent 4
+```
+
+### Passing Environment Variables to Agents
+
+You can pass arbitrary environment variables to agents using the `--ae` or `--agent-env` flag:
+
+```bash
+harbor run \
+  --dataset swebench@lite \
+  --agent openhands \
+  --model anthropic/claude-sonnet-4 \
+  --ae AWS_REGION=us-east-1 \
+  --ae CUSTOM_VAR=value
+```
+
+### Common Agent Environment Variables
+
+<AccordionGroup>
+  <Accordion title="Authentication Keys">
+    - `ANTHROPIC_API_KEY` - For Claude-based agents
+    - `OPENAI_API_KEY` - For OpenAI-based agents
+    - `GOOGLE_API_KEY` / `GEMINI_API_KEY` - For Gemini agents
+    - `CURSOR_API_KEY` - For Cursor CLI
+    - `DATABRICKS_HOST` / `DATABRICKS_TOKEN` - For Databricks models
+  </Accordion>
+
+  <Accordion title="Model Configuration">
+    - `ANTHROPIC_MODEL` - Override default model for Claude agents
+    - `LLM_MODEL` - Model name for multi-provider agents
+    - `LLM_BASE_URL` - Custom API endpoint
+    - `LLM_API_VERSION` - API version specification
+  </Accordion>
+
+  <Accordion title="Agent Behavior">
+    - `CLAUDE_CODE_MAX_TURNS` - Maximum turns for Claude Code
+    - `MAX_THINKING_TOKENS` - Thinking token limit
+    - `LLM_REASONING_EFFORT` - Reasoning effort level (low/medium/high)
+    - `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING` - Disable adaptive thinking
+  </Accordion>
+</AccordionGroup>
+
+## Adding a New Agent
+
+To add a custom agent to Harbor:
+
+1. Create a new file in `src/harbor/agents/installed/{agent_name}.py`
+2. Extend `BaseInstalledAgent` or `BaseAgent`
+3. Implement required methods:
+   - `name()` - Return agent identifier
+   - `setup()` - Install and configure the agent
+   - `run()` - Execute the agent on a task
+4. Add installation template `install-{agent_name}.sh.j2`
+5. Register in `AgentName` enum in `src/harbor/models/agent/name.py`
+
+### Example Agent Implementation
+
+```python
+from harbor.agents.installed.base import BaseInstalledAgent
+from harbor.models.agent.name import AgentName
+
+class MyAgent(BaseInstalledAgent):
+    @staticmethod
+    def name() -> str:
+        return AgentName.MY_AGENT.value
+    
+    @property
+    def _install_agent_template_path(self) -> Path:
+        return Path(__file__).parent / "install-my-agent.sh.j2"
+    
+    async def run(self, instruction: str, environment, context):
+        # Implementation here
+        pass
+```
+
+See the [agent development guide](/customize/agents) for detailed instructions.

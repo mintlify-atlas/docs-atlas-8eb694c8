@@ -1,0 +1,552 @@
+---
+title: Parallel Execution
+description: Optimize parallel execution strategies for large-scale evaluations
+---
+
+Harbor's parallel execution system allows you to run hundreds or thousands of trials simultaneously. This guide covers strategies for optimizing throughput, managing resources, and troubleshooting common issues.
+
+## Execution Architecture
+
+Harbor uses an orchestrator pattern to manage parallel trial execution:
+
+```
+Job
+ ├── Orchestrator (manages concurrency)
+ ├── Trial 1 (task-001, agent-A, attempt-1)
+ ├── Trial 2 (task-001, agent-A, attempt-2)
+ ├── Trial 3 (task-002, agent-A, attempt-1)
+ └── Trial N ...
+```
+
+Each trial runs independently with its own:
+- Environment (container)
+- Agent instance
+- Verifier
+- Logs directory
+
+## Orchestrator Types
+
+### Local Orchestrator
+
+Runs trials in parallel on your local machine using asyncio:
+
+```bash
+harbor run --dataset terminal-bench@2.0 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --orchestrator local \
+  --n-concurrent 8
+```
+
+**Best for:**
+- Development and testing
+- Small to medium evaluations (1-50 concurrent trials)
+- Controlled resource usage
+
+**Configuration:**
+
+```json
+{
+  "orchestrator": {
+    "type": "local",
+    "n_concurrent_trials": 8,
+    "quiet": false,
+    "retry": {
+      "max_retries": 2,
+      "wait_multiplier": 1.0,
+      "min_wait_sec": 1.0,
+      "max_wait_sec": 60.0
+    }
+  }
+}
+```
+
+## Choosing Concurrency Level
+
+The optimal concurrency depends on several factors:
+
+### CPU-Bound Tasks
+
+For tasks that use significant CPU:
+
+```bash
+# Conservative: 1x CPU cores
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent $(nproc)
+
+# Moderate: 2x CPU cores (if I/O wait is high)
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent $(($(nproc) * 2))
+```
+
+### Memory-Bound Tasks
+
+Calculate based on available memory:
+
+```bash
+# If each task needs 4GB and you have 32GB:
+# 32GB total - 8GB for system = 24GB available
+# 24GB / 4GB per task = 6 concurrent tasks
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent 6
+```
+
+### I/O-Bound Tasks
+
+For tasks that wait on API calls or network:
+
+```bash
+# Can go higher since trials spend time waiting
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent 20
+```
+
+### Cloud Execution
+
+Cloud providers handle resource management:
+
+```bash
+# Start conservative
+harbor run --dataset terminal-bench@2.0 --agent claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 50
+
+# Scale up if no issues
+harbor run --dataset terminal-bench@2.0 --agent claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 200
+```
+
+## Retry Configuration
+
+Configure automatic retries for transient failures:
+
+```json config.json
+{
+  "orchestrator": {
+    "retry": {
+      "max_retries": 3,
+      "include_exceptions": null,  // Retry all exceptions
+      "exclude_exceptions": [
+        "AgentTimeoutError",      // Don't retry timeouts
+        "VerifierTimeoutError",
+        "RewardFileNotFoundError"
+      ],
+      "wait_multiplier": 2.0,      // Exponential backoff
+      "min_wait_sec": 5.0,
+      "max_wait_sec": 300.0
+    }
+  }
+}
+```
+
+### Retry Strategies
+
+**Aggressive (retry everything):**
+```json
+"retry": {
+  "max_retries": 3,
+  "exclude_exceptions": []
+}
+```
+
+**Conservative (retry only network/provider errors):**
+```json
+"retry": {
+  "max_retries": 2,
+  "include_exceptions": [
+    "NetworkError",
+    "ProviderError",
+    "RateLimitError"
+  ]
+}
+```
+
+**No retries:**
+```json
+"retry": {
+  "max_retries": 0
+}
+```
+
+## Resource Management
+
+### Monitoring Resource Usage
+
+```bash
+# Monitor while running
+watch -n 1 'docker stats'
+
+# Check disk usage
+df -h
+
+# Monitor memory
+free -h
+```
+
+### Docker Resource Limits
+
+Set global Docker resource limits:
+
+```json ~/.docker/daemon.json
+{
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 64000,
+      "Soft": 64000
+    }
+  },
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+```
+
+Restart Docker:
+```bash
+sudo systemctl restart docker
+```
+
+### Disk Space Management
+
+Large evaluations can consume significant disk space:
+
+```bash
+# Clean Docker images periodically
+docker system prune -a -f
+
+# Clean old job directories
+rm -rf jobs/2026-02-*
+
+# Monitor job directory size
+du -sh jobs/
+```
+
+### Task-Specific Resource Limits
+
+Override default resources per task:
+
+```bash
+# Give tasks more resources
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --override-cpus 4 \
+  --override-memory-mb 8192 \
+  --override-storage-mb 20480
+```
+
+<Warning>
+Overriding resources may disqualify results from benchmark leaderboards.
+</Warning>
+
+## Optimizing Throughput
+
+### Pipeline Stages
+
+Each trial goes through these stages:
+
+1. **Environment Build** (5s - 10min)
+2. **Environment Start** (2s - 30s)
+3. **Agent Setup** (10s - 2min)
+4. **Agent Execution** (1min - 1hr)
+5. **Verification** (10s - 5min)
+6. **Cleanup** (2s - 10s)
+
+### Reduce Build Time
+
+**Use pre-built images:**
+```toml task.toml
+[environment]
+docker_image = "myregistry/task-env:v1.0"
+```
+
+**Use Docker layer caching:**
+```dockerfile
+# Put slow, stable operations first
+FROM python:3.11
+RUN pip install numpy pandas  # Cached
+
+# Put fast, changing operations last
+COPY . /app
+```
+
+**Use snapshots (cloud providers):**
+```bash
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --ek snapshot_template_name="task-snapshot"
+```
+
+### Reduce Startup Time
+
+**Minimize Dockerfile operations:**
+```dockerfile
+# Bad: Slow startup
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y python3 python3-pip git
+RUN pip install -r requirements.txt
+
+# Good: Pre-built image
+FROM myregistry/python-base:latest
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+```
+
+### Batch Similar Tasks
+
+Group tasks with similar environments:
+
+```bash
+# Run all Python tasks together
+harbor run --tasks ./tasks/python-* --agent claude-code -m anthropic/claude-opus-4-1
+
+# Then run all JavaScript tasks
+harbor run --tasks ./tasks/javascript-* --agent claude-code -m anthropic/claude-opus-4-1
+```
+
+## Rate Limiting
+
+### LLM Provider Rate Limits
+
+Stay within API rate limits:
+
+```bash
+# Anthropic: ~1000 RPM for Claude Opus
+# With avg 10 requests per trial:
+# 1000 RPM / 10 = 100 trials per minute
+# 100 trials / 60 sec = ~1.5 concurrent trials
+
+# Conservative: 25 concurrent
+harbor run --dataset terminal-bench@2.0 --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent 25
+
+# Aggressive: 100 concurrent (may hit limits)
+harbor run --dataset terminal-bench@2.0 --agent claude-code -m anthropic/claude-opus-4-1 \
+  --n-concurrent 100
+```
+
+### Cloud Provider Rate Limits
+
+```bash
+# Daytona: Check your plan's concurrent sandbox limit
+# Start conservative
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 50
+
+# Increase gradually
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --env daytona \
+  --n-concurrent 150
+```
+
+## Progress Monitoring
+
+### Real-time Progress
+
+Harbor shows real-time progress by default:
+
+```
+Running trials... ━━━━━━━━━━━━━━━━━━━ 45/100 45% 0:05:23
+
+Active Trials (8/8):
+  │ task-001__claude-code__1  →  Running agent...
+  │ task-002__claude-code__1  →  Building environment...
+  │ task-003__claude-code__1  →  Running verification...
+  ...
+```
+
+### Quiet Mode
+
+For scripting or CI/CD:
+
+```bash
+harbor run --dataset my-tasks --agent claude-code -m anthropic/claude-opus-4-1 \
+  --quiet
+```
+
+### Logging
+
+Check orchestrator logs:
+
+```bash
+tail -f jobs/2026-03-03__15-30-00/job.log
+```
+
+## Debugging Parallel Execution
+
+### Common Issues
+
+**Too many concurrent trials:**
+```
+Error: failed to create container: resource exhausted
+```
+
+Solution: Reduce `--n-concurrent`
+
+**Rate limit errors:**
+```
+Error: rate limit exceeded (429)
+```
+
+Solution: Reduce concurrency or add retry delays
+
+**Out of memory:**
+```
+Error: OOMKilled
+```
+
+Solution: Reduce concurrency or increase system memory
+
+**Out of disk space:**
+```
+Error: no space left on device
+```
+
+Solution: Clean up old jobs and Docker images
+
+### Debugging Individual Trials
+
+When trials fail:
+
+```bash
+# View trial logs
+harbor trials logs jobs/2026-03-03__15-30-00/trials/task-001__claude-code__1
+
+# View trial results
+harbor view jobs/2026-03-03__15-30-00/trials/task-001__claude-code__1
+
+# Re-run single trial
+harbor run --tasks ./tasks/task-001 \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1
+```
+
+## Performance Benchmarks
+
+### Local Execution (16-core, 64GB RAM)
+
+| Concurrency | Tasks/Hour | CPU Usage | Memory Usage |
+|-------------|------------|-----------|-------------|
+| 4           | ~50        | 40%       | 16GB        |
+| 8           | ~90        | 75%       | 32GB        |
+| 16          | ~140       | 95%       | 56GB        |
+| 32          | ~120       | 100%      | 60GB+       |
+
+*Diminishing returns beyond 16 concurrent trials*
+
+### Cloud Execution (Daytona)
+
+| Concurrency | Tasks/Hour | Cost/Task |
+|-------------|------------|-----------|
+| 50          | ~600       | $0.10     |
+| 100         | ~1100      | $0.09     |
+| 200         | ~2000      | $0.08     |
+
+*Approximate values, varies by task complexity*
+
+## Best Practices
+
+1. **Start small**: Test with 1-2 tasks before full evaluation
+2. **Increase gradually**: Double concurrency until you hit limits
+3. **Monitor resources**: Watch CPU, memory, and disk usage
+4. **Use appropriate environment**: Local for fewer than 50 tasks, cloud for more than 100
+5. **Pre-build images**: Use Docker layer caching and snapshots
+6. **Set appropriate timeouts**: Avoid wasting resources on stuck trials
+7. **Enable retries**: Handle transient failures automatically
+8. **Clean up regularly**: Remove old jobs and Docker artifacts
+9. **Batch similar tasks**: Group tasks with similar environments
+10. **Test retry config**: Ensure retries work as expected
+
+## Example Configurations
+
+### Small Evaluation (Local)
+
+```json
+{
+  "orchestrator": {
+    "type": "local",
+    "n_concurrent_trials": 4,
+    "retry": {
+      "max_retries": 2
+    }
+  },
+  "datasets": [
+    {
+      "registry": {"type": "remote"},
+      "name": "terminal-bench",
+      "version": "2.0",
+      "n_tasks": 20
+    }
+  ]
+}
+```
+
+### Medium Evaluation (Local)
+
+```json
+{
+  "orchestrator": {
+    "type": "local",
+    "n_concurrent_trials": 12,
+    "retry": {
+      "max_retries": 3,
+      "wait_multiplier": 2.0
+    }
+  },
+  "timeout_multiplier": 1.5,
+  "datasets": [
+    {
+      "registry": {"type": "remote"},
+      "name": "terminal-bench",
+      "version": "2.0"
+    }
+  ]
+}
+```
+
+### Large Evaluation (Cloud)
+
+```json
+{
+  "orchestrator": {
+    "type": "local",
+    "n_concurrent_trials": 100,
+    "quiet": true,
+    "retry": {
+      "max_retries": 5,
+      "wait_multiplier": 2.0,
+      "max_wait_sec": 300.0
+    }
+  },
+  "environment": {
+    "type": "daytona",
+    "kwargs": {
+      "auto_delete_interval_mins": 10
+    }
+  },
+  "datasets": [
+    {
+      "registry": {"type": "remote"},
+      "name": "swebench",
+      "version": "verified"
+    }
+  ]
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Running Evaluations" icon="play" href="/guides/running-evaluations">
+    Learn evaluation basics
+  </Card>
+  <Card title="Cloud Execution" icon="cloud" href="/guides/cloud-execution">
+    Scale to cloud providers
+  </Card>
+  <Card title="Creating Tasks" icon="file-code" href="/guides/creating-tasks">
+    Optimize tasks for parallel execution
+  </Card>
+</CardGroup>

@@ -1,0 +1,443 @@
+---
+title: harbor view
+description: Interactive web UI for browsing agent trajectories
+---
+
+The `harbor view` command starts a web server that provides an interactive UI for browsing and analyzing agent trajectories from job and trial directories.
+
+## Usage
+
+```bash
+harbor view <FOLDER> [OPTIONS]
+```
+
+## Arguments
+
+<ParamField path="FOLDER" type="Path" required>
+  Folder containing job/trial directories with trajectories.
+</ParamField>
+
+## Options
+
+<ParamField path="-p, --port" type="string">
+  Port or port range to bind the server to. Default: `8080-8089`
+  
+  Examples:
+  - Single port: `8080`
+  - Port range: `8080-8090`
+</ParamField>
+
+<ParamField path="--host" type="string">
+  Host to bind the server to. Default: `127.0.0.1`
+</ParamField>
+
+<ParamField path="--dev" type="boolean">
+  Run frontend in development mode with hot reloading. Requires bun.
+</ParamField>
+
+<ParamField path="--no-build" type="boolean">
+  Skip auto-building viewer if static files are missing.
+</ParamField>
+
+<ParamField path="--build" type="boolean">
+  Force rebuild of the viewer even if static files exist.
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+View trajectories from a job directory:
+
+```bash
+harbor view ~/.cache/harbor/jobs/my-job-20260303-120000
+```
+
+View from a custom directory:
+
+```bash
+harbor view ./my-evaluations
+```
+
+### Custom Port
+
+Start on a specific port:
+
+```bash
+harbor view ./jobs --port 9000
+```
+
+Use a port range:
+
+```bash
+harbor view ./jobs --port 8080-8090
+```
+
+### Network Access
+
+Allow access from other machines:
+
+```bash
+harbor view ./jobs --host 0.0.0.0 --port 8080
+```
+
+### Development Mode
+
+Run with hot reloading (requires bun):
+
+```bash
+harbor view ./jobs --dev
+```
+
+### Force Rebuild
+
+Rebuild the viewer frontend:
+
+```bash
+harbor view ./jobs --build
+```
+
+## Features
+
+### Trajectory Browsing
+
+- **Job List**: Browse all jobs in the directory
+- **Trial List**: View all trials within a job
+- **Trajectory Viewer**: Step through agent execution
+- **Tool Calls**: Inspect tool invocations and results
+- **Metadata**: View trial results, rewards, and timing
+
+### Filtering and Search
+
+- Filter trials by outcome (success/failure)
+- Search by task name, agent, or model
+- Sort by reward, duration, or timestamp
+
+### Comparison
+
+- Compare multiple trials side-by-side
+- Diff tool calls and outputs
+- Analyze success vs. failure patterns
+
+### Export
+
+- Download trajectories as JSON
+- Export filtered views
+- Generate reports
+
+## Trajectory Format
+
+The viewer displays trajectories in the ATIF (Agent Trajectory Interchange Format):
+
+```json
+{
+  "episodes": [
+    {
+      "episode_id": "episode-0",
+      "steps": [
+        {
+          "step_id": 0,
+          "role": "user",
+          "content": "Create a Python script that..."
+        },
+        {
+          "step_id": 1,
+          "role": "assistant",
+          "content": "I'll create that script...",
+          "tool_calls": [
+            {
+              "tool_name": "write_file",
+              "tool_input": {"path": "script.py", "content": "..."},
+              "tool_output": {"success": true}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Directory Structure
+
+The viewer scans for trajectories in this structure:
+
+```
+./jobs/
+├── job-1/
+│   ├── config.json
+│   ├── result.json
+│   ├── task1__agent__attempt-1/
+│   │   ├── result.json
+│   │   ├── trajectory.json  ← Displayed in viewer
+│   │   └── logs/
+│   └── task2__agent__attempt-1/
+│       └── trajectory.json
+└── job-2/
+    └── ...
+```
+
+## Server Modes
+
+### Production Mode (Default)
+
+Serves pre-built static files:
+
+```bash
+harbor view ./jobs
+```
+
+Output:
+```
+Starting Harbor Viewer
+  Jobs folder: /path/to/jobs
+  Server: http://127.0.0.1:8080
+```
+
+Open http://127.0.0.1:8080 in your browser.
+
+### Development Mode
+
+Runs frontend dev server with hot reloading:
+
+```bash
+harbor view ./jobs --dev
+```
+
+Output:
+```
+Starting Harbor Viewer (dev mode)
+  Jobs folder: /path/to/jobs
+  Backend API: http://127.0.0.1:8080
+  Frontend: http://localhost:5173
+```
+
+Open http://localhost:5173 in your browser.
+
+### API-Only Mode
+
+If static files are missing and `--no-build` is set:
+
+```bash
+harbor view ./jobs --no-build
+```
+
+Output:
+```
+Warning: Viewer static files not found. Only API will be available.
+  Use --dev flag for development mode with hot reloading.
+
+Starting Harbor Viewer
+  Jobs folder: /path/to/jobs
+  Server: http://127.0.0.1:8080
+  API docs: http://127.0.0.1:8080/docs
+```
+
+## Building the Viewer
+
+The viewer frontend is built using Bun:
+
+### Auto-Build
+
+On first run, the viewer automatically builds if source is available:
+
+```bash
+harbor view ./jobs
+```
+
+Output:
+```
+Viewer not built. Building now (this only happens once)...
+
+Building viewer...
+  Installing dependencies...
+  Building frontend...
+Build complete!
+
+Starting Harbor Viewer
+  Jobs folder: /path/to/jobs
+  Server: http://127.0.0.1:8080
+```
+
+### Manual Build
+
+Force a rebuild:
+
+```bash
+harbor view ./jobs --build
+```
+
+### Skip Build
+
+Skip auto-building:
+
+```bash
+harbor view ./jobs --no-build
+```
+
+## Use Cases
+
+### Debug Agent Behavior
+
+Inspect why a trial failed:
+
+```bash
+harbor view ~/.cache/harbor/jobs/debug-run
+```
+
+1. Navigate to failed trial
+2. Step through trajectory
+3. Inspect tool calls and errors
+4. Compare with successful trials
+
+### Analyze Evaluation Results
+
+Review job results:
+
+```bash
+harbor view ~/.cache/harbor/jobs/terminal-bench-eval
+```
+
+1. View overall statistics
+2. Filter by success/failure
+3. Identify patterns in failures
+4. Export data for further analysis
+
+### Compare Agent Strategies
+
+Compare different agents or models:
+
+```bash
+harbor view ./comparison-jobs
+```
+
+1. Select trials from different agents
+2. View side-by-side
+3. Compare tool usage patterns
+4. Analyze performance differences
+
+### Demo and Presentation
+
+Show agent behavior in meetings:
+
+```bash
+harbor view ./demo-jobs --host 0.0.0.0 --port 8080
+```
+
+Share the URL with meeting participants.
+
+## API Endpoints
+
+The viewer provides a REST API:
+
+- `GET /api/jobs` - List all jobs
+- `GET /api/jobs/{job_id}` - Get job details
+- `GET /api/jobs/{job_id}/trials` - List trials in a job
+- `GET /api/trials/{trial_id}` - Get trial details
+- `GET /api/trials/{trial_id}/trajectory` - Get trajectory
+
+Access API docs at `http://localhost:8080/docs` (when UI is not available).
+
+## Advanced Examples
+
+### Remote Viewing
+
+View trajectories from a remote server:
+
+```bash
+# On server
+harbor view /data/harbor/jobs --host 0.0.0.0 --port 8080
+
+# On local machine, forward port
+ssh -L 8080:localhost:8080 user@server
+
+# Open http://localhost:8080 in browser
+```
+
+### Multiple Job Directories
+
+View multiple directories (symlink them):
+
+```bash
+mkdir all-jobs
+ln -s ~/.cache/harbor/jobs/* all-jobs/
+ln -s ./my-evaluations/* all-jobs/
+
+harbor view all-jobs
+```
+
+### Custom Port Range
+
+Use a custom port range for team environments:
+
+```bash
+# Each team member uses their assigned range
+harbor view ./jobs --port 8080-8089  # User 1
+harbor view ./jobs --port 8090-8099  # User 2
+harbor view ./jobs --port 8100-8109  # User 3
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+If the default port is occupied:
+
+```bash
+# Try a different port
+harbor view ./jobs --port 9000
+
+# Or use a range
+harbor view ./jobs --port 8080-8100
+```
+
+### No Trajectories Found
+
+If no trajectories appear:
+
+1. Check that trials have `trajectory.json` files
+2. Verify the agent supports ATIF (check `SUPPORTS_ATIF` flag)
+3. Ensure trials completed successfully
+
+### Build Fails
+
+If viewer build fails:
+
+```bash
+# Install bun
+curl -fsSL https://bun.sh/install | bash
+
+# Try building again
+harbor view ./jobs --build
+
+# Or use dev mode
+harbor view ./jobs --dev
+```
+
+### Static Files Missing
+
+If static files are missing:
+
+```bash
+# Auto-build (if source available)
+harbor view ./jobs
+
+# Or force build
+harbor view ./jobs --build
+
+# Or use dev mode
+harbor view ./jobs --dev
+```
+
+## Browser Compatibility
+
+The viewer works best on:
+- Chrome/Edge 90+
+- Firefox 88+
+- Safari 14+
+
+## See Also
+
+- [harbor traces](/cli/traces) - Export trajectories to datasets
+- [harbor jobs](/cli/jobs) - Manage jobs
+- [harbor trials](/cli/trials) - Run trials

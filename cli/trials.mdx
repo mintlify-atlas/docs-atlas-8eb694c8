@@ -1,0 +1,323 @@
+---
+title: harbor trials
+description: Run and manage individual trials
+---
+
+The `harbor trials` command group provides commands for running and managing individual trials. A trial is a single execution of an agent on a task.
+
+## Commands
+
+### harbor trials start
+
+Start a single trial.
+
+```bash
+harbor trials start [OPTIONS]
+```
+
+#### Configuration
+
+<ParamField path="-c, --config" type="Path">
+  Path to a trial configuration file in YAML or JSON format. Should implement the schema of `harbor.models.trial.config:TrialConfig`. Allows for more granular control over the trial configuration.
+</ParamField>
+
+#### Trial Settings
+
+<ParamField path="-p, --path" type="Path">
+  Path to a local task directory, or path within git repo if `--task-git-url` is specified.
+</ParamField>
+
+<ParamField path="--trial-name" type="string">
+  Name of the trial. Default: auto-generated
+</ParamField>
+
+<ParamField path="--trials-dir" type="Path">
+  Directory to store trial results. Default: `./trials`
+</ParamField>
+
+<ParamField path="--timeout-multiplier" type="float">
+  Multiplier for task timeouts. Default: `1.0`
+</ParamField>
+
+<ParamField path="--agent-timeout-multiplier" type="float">
+  Multiplier for agent execution timeout. Overrides `--timeout-multiplier`.
+</ParamField>
+
+<ParamField path="--verifier-timeout-multiplier" type="float">
+  Multiplier for verifier timeout. Overrides `--timeout-multiplier`.
+</ParamField>
+
+<ParamField path="--agent-setup-timeout-multiplier" type="float">
+  Multiplier for agent setup timeout. Overrides `--timeout-multiplier`.
+</ParamField>
+
+<ParamField path="--environment-build-timeout-multiplier" type="float">
+  Multiplier for environment build timeout. Overrides `--timeout-multiplier`.
+</ParamField>
+
+#### Agent Options
+
+<ParamField path="-a, --agent" type="AgentName">
+  Agent name. Default: `oracle`
+</ParamField>
+
+<ParamField path="--agent-import-path" type="string">
+  Import path for custom agent.
+</ParamField>
+
+<ParamField path="-m, --model" type="string">
+  Model name for the agent.
+</ParamField>
+
+<ParamField path="--agent-timeout" type="float">
+  Agent execution timeout in seconds. Overrides task default.
+</ParamField>
+
+<ParamField path="--agent-setup-timeout" type="float">
+  Agent setup timeout in seconds. Overrides default.
+</ParamField>
+
+<ParamField path="--agent-kwarg" type="list[string]">
+  Additional agent kwarg in the format `key=value`. You can view available kwargs by looking at the agent's `__init__` method. Can be set multiple times to set multiple kwargs.
+  
+  Common kwargs include: `version`, `prompt_template`, etc.
+</ParamField>
+
+<ParamField path="--ae, --agent-env" type="list[string]">
+  Environment variable to pass to the agent in `KEY=VALUE` format. Can be used multiple times.
+  
+  Example: `--ae AWS_REGION=us-east-1`
+</ParamField>
+
+#### Environment Options
+
+<ParamField path="--environment-type" type="EnvironmentType">
+  Environment type. Default: `docker`
+</ParamField>
+
+<ParamField path="--environment-import-path" type="string">
+  Import path for custom environment (e.g., `module.path:ClassName`).
+</ParamField>
+
+<ParamField path="--force-build/--no-force-build" type="boolean">
+  Whether to force rebuild the environment. Default: `--no-force-build`
+</ParamField>
+
+<ParamField path="--delete/--no-delete" type="boolean">
+  Whether to delete the environment after completion. Default: `--delete`
+</ParamField>
+
+<ParamField path="--override-cpus" type="int">
+  Override the number of CPUs for the environment.
+</ParamField>
+
+<ParamField path="--override-memory-mb" type="int">
+  Override the memory (in MB) for the environment.
+</ParamField>
+
+<ParamField path="--override-storage-mb" type="int">
+  Override the storage (in MB) for the environment.
+</ParamField>
+
+<ParamField path="--override-gpus" type="int">
+  Override the number of GPUs for the environment.
+</ParamField>
+
+<ParamField path="--environment-kwarg" type="list[string]">
+  Environment kwarg in `key=value` format. Can be used multiple times.
+</ParamField>
+
+#### Verifier Options
+
+<ParamField path="--verifier-timeout" type="float">
+  Verifier execution timeout in seconds. Overrides task default.
+</ParamField>
+
+#### Task Options
+
+<ParamField path="--task-git-url" type="string">
+  Git URL for a task repository.
+</ParamField>
+
+<ParamField path="--task-git-commit" type="string">
+  Git commit ID for the task. Requires `--task-git-url`.
+</ParamField>
+
+#### Examples
+
+Run a single trial on a local task:
+
+```bash
+harbor trials start \
+  --path ./my-task \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1
+```
+
+Run with custom timeout:
+
+```bash
+harbor trials start \
+  --path ./my-task \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --agent-timeout 3600
+```
+
+Run on Daytona:
+
+```bash
+harbor trials start \
+  --path ./my-task \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --environment-type daytona
+```
+
+Use a configuration file:
+
+```bash
+harbor trials start --config trial-config.yaml
+```
+
+Example `trial-config.yaml`:
+
+```yaml
+trial_name: my-trial
+trials_dir: ./my-trials
+timeout_multiplier: 2.0
+agent:
+  name: claude-code
+  model_name: anthropic/claude-opus-4-1
+  kwargs:
+    version: "1.0"
+task:
+  path: ./my-task
+environment:
+  type: docker
+  force_build: false
+  delete: true
+```
+
+### harbor trials summarize
+
+Summarize a single trial using Claude Agent SDK.
+
+```bash
+harbor trials summarize <TRIAL_PATH> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="TRIAL_PATH" type="Path" required>
+  Path to the trial directory to summarize.
+</ParamField>
+
+#### Options
+
+<ParamField path="-m, --model" type="string">
+  Model to use for summarization (e.g., `haiku`, `sonnet`, `opus`). Default: `haiku`
+</ParamField>
+
+<ParamField path="--overwrite" type="boolean">
+  Overwrite existing `summary.md` file.
+</ParamField>
+
+#### Examples
+
+Summarize a failed trial:
+
+```bash
+harbor trials summarize ./trials/my-task__claude-code__attempt-1
+```
+
+Use a different model:
+
+```bash
+harbor trials summarize \
+  ./trials/my-task__claude-code__attempt-1 \
+  --model sonnet
+```
+
+Regenerate summary:
+
+```bash
+harbor trials summarize \
+  ./trials/my-task__claude-code__attempt-1 \
+  --overwrite
+```
+
+## Trial Directory Structure
+
+A typical trial directory structure:
+
+```
+./trials/my-task__claude-code__attempt-1/
+├── result.json              # Trial result with rewards and timing
+├── trajectory.json          # Agent trajectory (if ATIF supported)
+├── summary.md               # Generated summary (if using summarize)
+├── logs/
+│   ├── agent/
+│   │   ├── stdout.txt       # Agent stdout
+│   │   └── stderr.txt       # Agent stderr
+│   ├── environment/
+│   │   ├── build.log        # Environment build log
+│   │   └── runtime.log      # Environment runtime log
+│   └── verifier/
+│       ├── stdout.txt       # Verifier stdout
+│       ├── stderr.txt       # Verifier stderr
+│       └── reward.txt       # Reward value
+└── artifacts/               # Downloaded artifacts (if specified)
+```
+
+## Trial Results
+
+The `result.json` file contains:
+
+```json
+{
+  "trial_name": "my-task__claude-code__attempt-1",
+  "task_name": "my-task",
+  "started_at": "2026-03-03T12:00:00Z",
+  "finished_at": "2026-03-03T12:15:00Z",
+  "verifier_result": {
+    "rewards": {"reward": 1.0},
+    "stdout": "...",
+    "stderr": "..."
+  },
+  "exception_info": null,
+  "metadata": {...}
+}
+```
+
+## Use Cases
+
+### Development and Debugging
+
+Trials are useful for:
+- Testing a single task during development
+- Debugging agent behavior
+- Iterating on task definitions
+- Testing custom agents or environments
+
+### Running Quick Tests
+
+Quickly test a task before running a full job:
+
+```bash
+harbor trials start --path ./new-task --agent oracle
+```
+
+### Analyzing Individual Failures
+
+After a job completes, deep dive into specific failures:
+
+```bash
+harbor trials summarize ~/.cache/harbor/jobs/my-job/task1__agent__attempt-1
+```
+
+## See Also
+
+- [harbor run](/cli/run) - Run complete evaluation jobs
+- [harbor jobs](/cli/jobs) - Manage jobs
+- [harbor tasks](/cli/tasks) - Manage task definitions

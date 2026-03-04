@@ -1,0 +1,306 @@
+---
+title: harbor datasets
+description: List and download datasets from registries
+---
+
+The `harbor datasets` command group provides utilities for discovering and downloading evaluation datasets from Harbor registries.
+
+## Commands
+
+### harbor datasets list
+
+List all datasets available in a registry.
+
+```bash
+harbor datasets list [OPTIONS]
+```
+
+#### Options
+
+<ParamField path="--registry-url" type="string">
+  Registry URL for remote dataset listing. Default: The default Harbor registry.
+</ParamField>
+
+<ParamField path="--registry-path" type="Path">
+  Path to local registry for dataset listing.
+</ParamField>
+
+<Note>
+  You cannot specify both `--registry-url` and `--registry-path`.
+</Note>
+
+#### Examples
+
+List datasets from default registry:
+
+```bash
+harbor datasets list
+```
+
+List from a custom remote registry:
+
+```bash
+harbor datasets list --registry-url https://my-registry.example.com
+```
+
+List from a local registry:
+
+```bash
+harbor datasets list --registry-path ./my-local-registry
+```
+
+#### Output
+
+Displays a table with:
+- **Name**: Dataset name
+- **Version**: Dataset version
+- **Tasks**: Number of tasks in the dataset
+- **Description**: Dataset description
+
+Example output:
+
+```
+┌─────────────────────┬─────────┬───────┬──────────────────────────────────┐
+│ Name                │ Version │ Tasks │ Description                      │
+├─────────────────────┼─────────┼───────┼──────────────────────────────────┤
+│ terminal-bench      │ 2.0     │ 200   │ Terminal Bench 2.0 evaluation... │
+│ swe-bench          │ lite    │ 300   │ SWE-bench Lite subset            │
+│ aider-polyglot     │ 1.0     │ 133   │ Aider Polyglot benchmark         │
+└─────────────────────┴─────────┴───────┴──────────────────────────────────┘
+
+Total: 3 dataset(s) with 633 task(s)
+```
+
+### harbor datasets download
+
+Download a dataset from a registry.
+
+```bash
+harbor datasets download <DATASET> [OPTIONS]
+```
+
+#### Arguments
+
+<ParamField path="DATASET" type="string" required>
+  Dataset to download in format `name@version` or `name` (defaults to `@head`).
+  
+  Examples:
+  - `terminal-bench@2.0`
+  - `swe-bench@lite`
+  - `my-dataset` (uses `@head` version)
+</ParamField>
+
+#### Options
+
+<ParamField path="--registry-url" type="string">
+  Registry URL for remote dataset. Default: The default Harbor registry.
+</ParamField>
+
+<ParamField path="--registry-path" type="Path">
+  Path to local registry.
+</ParamField>
+
+<ParamField path="-o, --output-dir" type="Path">
+  Directory to download tasks to. Default: `~/.cache/harbor/tasks`
+</ParamField>
+
+<ParamField path="--overwrite" type="boolean">
+  Overwrite cached tasks. Default: `false`
+</ParamField>
+
+#### Examples
+
+Download Terminal Bench 2.0:
+
+```bash
+harbor datasets download terminal-bench@2.0
+```
+
+Download to a specific directory:
+
+```bash
+harbor datasets download terminal-bench@2.0 --output-dir ./benchmarks
+```
+
+Download from a custom registry:
+
+```bash
+harbor datasets download my-dataset@1.0 \
+  --registry-url https://my-registry.example.com
+```
+
+Overwrite existing cached tasks:
+
+```bash
+harbor datasets download terminal-bench@2.0 --overwrite
+```
+
+Download from local registry:
+
+```bash
+harbor datasets download my-dataset --registry-path ./my-local-registry
+```
+
+#### How It Works
+
+1. Fetches dataset metadata from the registry
+2. Downloads tasks using shallow git clones with sparse checkout
+3. Caches tasks locally for future use
+4. Skips already-downloaded tasks (unless `--overwrite` is used)
+
+#### Downloaded Structure
+
+Tasks are downloaded to:
+
+```
+~/.cache/harbor/tasks/
+├── terminal-bench@2.0/
+│   ├── task-001/
+│   │   ├── instruction.md
+│   │   ├── task.toml
+│   │   ├── environment/
+│   │   ├── tests/
+│   │   └── solution/
+│   ├── task-002/
+│   └── ...
+└── swe-bench@lite/
+    ├── astropy__astropy-12907/
+    └── ...
+```
+
+## Registry Basics
+
+### Default Registry
+
+Harbor uses a default remote registry that hosts:
+- Terminal Bench datasets
+- Popular third-party benchmarks (SWE-Bench, Aider Polyglot, etc.)
+- Community-contributed datasets
+
+### Custom Registries
+
+You can use custom registries for:
+- Private evaluation datasets
+- Organization-specific benchmarks
+- Local development and testing
+
+#### Remote Registry
+
+Specify a custom remote registry URL:
+
+```bash
+harbor datasets list --registry-url https://my-company.com/harbor-registry
+```
+
+#### Local Registry
+
+Use a local directory as a registry:
+
+```bash
+harbor datasets list --registry-path ./my-registry
+```
+
+Local registry structure:
+
+```
+my-registry/
+├── registry.json        # Dataset metadata
+└── datasets/
+    ├── my-dataset@1.0/
+    │   └── tasks/
+    └── my-dataset@2.0/
+        └── tasks/
+```
+
+## Available Datasets
+
+To see all available datasets, run:
+
+```bash
+harbor datasets list
+```
+
+Popular datasets include:
+
+- **terminal-bench@2.0** - Terminal Bench 2.0 evaluation suite
+- **swe-bench@lite** - SWE-Bench Lite subset
+- **swe-bench@verified** - SWE-Bench Verified
+- **aider-polyglot@1.0** - Aider Polyglot benchmark
+- **autocodebench** - AutoCodeBench
+- **livecodebench** - LiveCodeBench
+- And many more...
+
+## Usage in Jobs
+
+Once downloaded, datasets can be used with `harbor run`:
+
+```bash
+harbor run --dataset terminal-bench@2.0 --agent claude-code --model anthropic/claude-opus-4-1
+```
+
+Or use local path:
+
+```bash
+harbor run --path ~/.cache/harbor/tasks/terminal-bench@2.0 --agent claude-code
+```
+
+## Examples
+
+### Explore Available Datasets
+
+```bash
+# List all datasets
+harbor datasets list
+
+# Download a dataset
+harbor datasets download terminal-bench@2.0
+
+# Run evaluation
+harbor run --dataset terminal-bench@2.0 --agent claude-code --model anthropic/claude-opus-4-1
+```
+
+### Work with Multiple Datasets
+
+```bash
+# Download multiple datasets
+harbor datasets download terminal-bench@2.0
+harbor datasets download swe-bench@lite
+harbor datasets download aider-polyglot@1.0
+
+# Run on all datasets (using config file)
+harbor run --config multi-dataset-config.yaml
+```
+
+### Private Registry Workflow
+
+```bash
+# List datasets from private registry
+harbor datasets list --registry-url https://internal-registry.company.com
+
+# Download from private registry
+harbor datasets download internal-benchmark@1.0 \
+  --registry-url https://internal-registry.company.com
+
+# Run evaluation
+harbor run --dataset internal-benchmark@1.0 --agent claude-code
+```
+
+### Local Development
+
+```bash
+# Create local registry
+mkdir -p ./my-registry/datasets
+
+# Download to local registry
+harbor datasets download terminal-bench@2.0 \
+  --output-dir ./my-registry/datasets/terminal-bench@2.0
+
+# List from local registry
+harbor datasets list --registry-path ./my-registry
+```
+
+## See Also
+
+- [harbor run](/cli/run) - Run evaluations on datasets
+- [harbor tasks](/cli/tasks) - Manage individual tasks
+- [Benchmark Adapters](/guides/benchmark-adapters) - Creating dataset adapters

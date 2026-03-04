@@ -1,0 +1,257 @@
+---
+title: BaseAgent
+description: Abstract base class for implementing custom agents in Harbor
+---
+
+## Overview
+
+The `BaseAgent` abstract class defines the interface that all Harbor agents must implement. Extend this class to create custom agents that can be evaluated using Harbor's framework.
+
+**Import:** `from harbor.agents.base import BaseAgent`
+
+## Class Attributes
+
+<ParamField path="SUPPORTS_ATIF" type="bool" default="False">
+  Whether the agent supports Harbor's Agent Trajectory Interchange Format (ATIF). Set to `True` in subclasses that can produce trajectory data.
+</ParamField>
+
+<ParamField path="logs_dir" type="Path" required>
+  Directory where agent logs should be written.
+</ParamField>
+
+<ParamField path="model_name" type="str | None">
+  The model identifier in format `provider/model-name` (e.g., `anthropic/claude-opus-4-1`).
+</ParamField>
+
+<ParamField path="logger" type="logging.Logger">
+  Logger instance for the agent.
+</ParamField>
+
+<ParamField path="mcp_servers" type="list[MCPServerConfig]">
+  MCP (Model Context Protocol) servers available to the agent from task configuration.
+</ParamField>
+
+<ParamField path="skills_dir" type="str | None">
+  Path to the skills directory in the environment.
+</ParamField>
+
+## Constructor
+
+```python
+def __init__(
+    self,
+    logs_dir: Path,
+    model_name: str | None = None,
+    logger: logging.Logger | None = None,
+    mcp_servers: list[MCPServerConfig] | None = None,
+    skills_dir: str | None = None,
+    *args,
+    **kwargs,
+)
+```
+
+<ParamField path="logs_dir" type="Path" required>
+  Path where logs should be written.
+</ParamField>
+
+<ParamField path="model_name" type="str | None">
+  Model identifier. If it contains `/`, it's split into provider and model name.
+</ParamField>
+
+<ParamField path="logger" type="logging.Logger | None">
+  Optional logger. If not provided, uses the global Harbor logger.
+</ParamField>
+
+<ParamField path="mcp_servers" type="list[MCPServerConfig] | None">
+  MCP servers from task config to register with the agent.
+</ParamField>
+
+<ParamField path="skills_dir" type="str | None">
+  Skills directory path in the environment.
+</ParamField>
+
+## Abstract Methods
+
+These methods must be implemented by all subclasses.
+
+### name
+
+```python
+@staticmethod
+@abstractmethod
+def name() -> str
+```
+
+Returns the name of the agent (e.g., `"claude-code"`, `"openhands"`).
+
+<ResponseField name="name" type="str" required>
+  The agent's identifier name.
+</ResponseField>
+
+### version
+
+```python
+@abstractmethod
+def version(self) -> str | None
+```
+
+Returns the version of the agent implementation.
+
+<ResponseField name="version" type="str | None" required>
+  Version string or None if version is unknown.
+</ResponseField>
+
+### setup
+
+```python
+@abstractmethod
+async def setup(self, environment: BaseEnvironment) -> None
+```
+
+Run commands to setup the agent and its tools in the environment. This is called before the agent runs.
+
+**Use this method to:**
+- Install agent dependencies
+- Register MCP servers from `self.mcp_servers`
+- Copy skills from `self.skills_dir` to the agent's expected location
+- Configure the agent
+
+<ParamField path="environment" type="BaseEnvironment" required>
+  The environment in which to setup the agent.
+</ParamField>
+
+### run
+
+```python
+@abstractmethod
+async def run(
+    self,
+    instruction: str,
+    environment: BaseEnvironment,
+    context: AgentContext,
+) -> None
+```
+
+Executes the agent in the environment to complete the given task.
+
+<ParamField path="instruction" type="str" required>
+  The natural language task instruction for the agent.
+</ParamField>
+
+<ParamField path="environment" type="BaseEnvironment" required>
+  The environment in which to complete the task.
+</ParamField>
+
+<ParamField path="context" type="AgentContext" required>
+  Context object to populate with execution results (tokens, cost, trajectories, metadata). Should be populated during execution to preserve data even on timeout.
+</ParamField>
+
+## Instance Methods
+
+### to_agent_info
+
+```python
+def to_agent_info(self) -> AgentInfo
+```
+
+Converts the agent to an `AgentInfo` object for result tracking.
+
+<ResponseField name="AgentInfo" type="AgentInfo">
+  Information about the agent including name, version, and model details.
+</ResponseField>
+
+### import_path
+
+```python
+@classmethod
+def import_path(cls) -> str
+```
+
+Returns the import path of the agent class.
+
+<ResponseField name="import_path" type="str">
+  Formatted as `'some.module.path:AgentClass'`.
+</ResponseField>
+
+## Example Implementation
+
+```python
+import asyncio
+from pathlib import Path
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class MyCustomAgent(BaseAgent):
+    """Custom agent implementation."""
+    
+    SUPPORTS_ATIF = False  # Set to True if you support trajectory format
+    
+    @staticmethod
+    def name() -> str:
+        return "my-agent"
+    
+    def version(self) -> str | None:
+        return "1.0.0"
+    
+    async def setup(self, environment: BaseEnvironment) -> None:
+        """Install and configure the agent."""
+        # Install dependencies
+        await environment.exec("pip install my-agent-package")
+        
+        # Register MCP servers if any
+        if self.mcp_servers:
+            mcp_config = {"mcpServers": {}}
+            for server in self.mcp_servers:
+                mcp_config["mcpServers"][server.name] = {
+                    "transport": server.transport,
+                    "url": server.url
+                }
+            # Write MCP config file
+            await environment.upload_file(
+                Path(".mcp.json"),
+                "/home/user/.mcp.json"
+            )
+        
+        # Copy skills if provided
+        if self.skills_dir:
+            await environment.exec(
+                f"cp -r {self.skills_dir}/* /home/user/.my-agent/skills/"
+            )
+    
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        """Execute the agent."""
+        # Write instruction to a file
+        instruction_file = self.logs_dir / "instruction.txt"
+        instruction_file.write_text(instruction)
+        await environment.upload_file(instruction_file, "/tmp/instruction.txt")
+        
+        # Run the agent
+        result = await environment.exec(
+            f"my-agent run --task /tmp/instruction.txt --model {self.model_name}",
+            cwd="/home/user",
+            timeout_sec=600
+        )
+        
+        # Populate context with results
+        context.n_input_tokens = 1000  # Parse from agent output
+        context.n_output_tokens = 500
+        context.cost_usd = 0.05
+        context.metadata = {
+            "exit_code": result.return_code,
+            "stdout_length": len(result.stdout or "")
+        }
+        
+        self.logger.info(f"Agent completed with exit code {result.return_code}")
+```
+
+## Related Types
+
+- [BaseEnvironment](/api/base-environment) - Environment interface
+- [AgentContext](/api/agent-context) - Context for agent execution data
+- [AgentConfig](/api/task-config#agentconfig) - Agent configuration

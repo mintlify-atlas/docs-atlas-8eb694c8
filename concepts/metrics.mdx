@@ -1,0 +1,652 @@
+---
+title: Metrics
+description: Understanding metrics collection and aggregation in Harbor
+---
+
+## Overview
+
+**Metrics** aggregate verification rewards across multiple trials to provide summary statistics and insights. They transform individual trial rewards into meaningful performance indicators.
+
+Harbor includes built-in metrics (mean, sum, min, max) and supports custom metric scripts for specialized evaluation.
+
+## BaseMetric Interface
+
+All metrics implement the `BaseMetric` abstract class:
+
+```python
+from abc import ABC, abstractmethod
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+class BaseMetric(ABC, Generic[T]):
+    @abstractmethod
+    def compute(self, rewards: list[T | None]) -> dict[str, float | int]:
+        """Compute metric from a list of rewards."""
+        pass
+```
+
+### Input
+
+- `rewards`: List of reward dictionaries from verifiers, or `None` for failed trials
+
+### Output
+
+- Dictionary mapping metric names to numeric values
+
+## Built-in Metrics
+
+Harbor provides several standard metrics:
+
+### Mean
+
+Computes the average reward across trials:
+
+```python
+class Mean(BaseMetric[dict[str, float | int]]):
+    def compute(
+        self, rewards: list[dict[str, float | int] | None]
+    ) -> dict[str, float | int]:
+        values = []
+
+        for reward in rewards:
+            if reward is None:
+                values.append(0)
+            elif len(reward) != 1:
+                raise ValueError(
+                    f"Expected exactly one key in reward dictionary, got {len(reward)}"
+                )
+            else:
+                values.extend(reward.values())
+
+        return {"mean": sum(values) / len(values)}
+```
+
+Example:
+
+```python
+rewards = [
+    {"reward": 1.0},
+    {"reward": 0.5},
+    {"reward": 0.8},
+    None,  # Failed trial
+]
+
+metric = Mean()
+result = metric.compute(rewards)
+print(result)  # {"mean": 0.575}
+```
+
+### Sum
+
+Sums all rewards:
+
+```python
+class Sum(BaseMetric[dict[str, float | int]]):
+    def compute(
+        self, rewards: list[dict[str, float | int] | None]
+    ) -> dict[str, float | int]:
+        values = []
+
+        for reward in rewards:
+            if reward is None:
+                values.append(0)
+            elif len(reward) != 1:
+                raise ValueError(
+                    f"Expected exactly one key in reward dictionary, got {len(reward)}"
+                )
+            else:
+                values.extend(reward.values())
+
+        return {"sum": sum(values)}
+```
+
+### Min
+
+Finds the minimum reward:
+
+```python
+class Min(BaseMetric[dict[str, float | int]]):
+    def compute(
+        self, rewards: list[dict[str, float | int] | None]
+    ) -> dict[str, float | int]:
+        values = []
+
+        for reward in rewards:
+            if reward is None:
+                values.append(0)
+            elif len(reward) != 1:
+                raise ValueError(
+                    f"Expected exactly one key in reward dictionary, got {len(reward)}"
+                )
+            else:
+                values.extend(reward.values())
+
+        return {"min": min(values)}
+```
+
+### Max
+
+Finds the maximum reward:
+
+```python
+class Max(BaseMetric[dict[str, float | int]]):
+    def compute(
+        self, rewards: list[dict[str, float | int] | None]
+    ) -> dict[str, float | int]:
+        values = []
+
+        for reward in rewards:
+            if reward is None:
+                values.append(0)
+            elif len(reward) != 1:
+                raise ValueError(
+                    f"Expected exactly one key in reward dictionary, got {len(reward)}"
+                )
+            else:
+                values.extend(reward.values())
+
+        return {"max": max(values)}
+```
+
+## Custom Metrics
+
+Create custom metrics using Python scripts executed with `uv`.
+
+### UvScript Metric
+
+```python
+class UvScript(BaseMetric[dict[Any, Any]]):
+    def __init__(self, script_path: Path | str):
+        self._script_path = Path(script_path)
+
+        if not self._script_path.exists():
+            raise FileNotFoundError(f"Script file not found: {self._script_path}")
+
+    def compute(self, rewards: list[dict[Any, Any] | None]) -> dict[str, float | int]:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "rewards.jsonl"
+            output_path = Path(temp_dir) / "metric.json"
+
+            # Write rewards to JSONL
+            with open(input_path, "w") as f:
+                for reward in rewards:
+                    if reward is None:
+                        f.write("null\n")
+                    else:
+                        json.dump(reward, f)
+                        f.write("\n")
+
+            # Execute script
+            result = subprocess.run(
+                [
+                    "uv",
+                    "run",
+                    str(self._script_path),
+                    "-i",
+                    str(input_path),
+                    "-o",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to compute custom metric: {result.stderr}")
+
+            return json.loads(output_path.read_text())
+```
+
+### Creating a Custom Metric Script
+
+```python
+#!/usr/bin/env python3
+"""Custom metric: compute pass rate and average score."""
+
+import argparse
+import json
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", required=True, help="Input JSONL file")
+    parser.add_argument("-o", "--output", required=True, help="Output JSON file")
+    args = parser.parse_args()
+
+    # Read rewards
+    rewards = []
+    with open(args.input) as f:
+        for line in f:
+            reward = json.loads(line.strip())
+            rewards.append(reward)
+
+    # Compute metrics
+    total = len(rewards)
+    passed = sum(1 for r in rewards if r and r.get("reward", 0) > 0.5)
+    scores = [r["reward"] for r in rewards if r]
+
+    result = {
+        "pass_rate": passed / total if total > 0 else 0,
+        "average_score": sum(scores) / len(scores) if scores else 0,
+        "total_trials": total,
+        "passed_trials": passed,
+    }
+
+    # Write output
+    with open(args.output, "w") as f:
+        json.dump(result, f)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Using Custom Metrics
+
+In `task.toml` or dataset configuration:
+
+```toml
+[[metrics]]
+type = "uv_script"
+script_path = "./metrics/custom_metric.py"
+```
+
+Or via CLI:
+
+```bash
+harber run \
+  --dataset my-dataset \
+  --agent my-agent \
+  --metric uv_script \
+  --metric-kwargs '{"script_path": "./metrics/custom_metric.py"}'
+```
+
+## Metric Configuration
+
+Metrics are configured using the `MetricConfig` model:
+
+```python
+class MetricConfig(BaseModel):
+    type: MetricType
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+```
+
+### MetricType Enum
+
+```python
+class MetricType(str, Enum):
+    MEAN = "mean"
+    SUM = "sum"
+    MIN = "min"
+    MAX = "max"
+    UV_SCRIPT = "uv_script"
+```
+
+## MetricFactory
+
+Create metrics dynamically:
+
+```python
+class MetricFactory:
+    _METRIC_MAP: dict[MetricType, type[BaseMetric]] = {
+        MetricType.SUM: Sum,
+        MetricType.MIN: Min,
+        MetricType.MAX: Max,
+        MetricType.MEAN: Mean,
+        MetricType.UV_SCRIPT: UvScript,
+    }
+
+    @classmethod
+    def create_metric(
+        cls,
+        metric_type: MetricType,
+        **kwargs,
+    ) -> BaseMetric:
+        if metric_type not in cls._METRIC_MAP:
+            raise ValueError(
+                f"Unsupported metric type: {metric_type}. This could be because the "
+                "metric is not registered in the MetricFactory or because the metric "
+                "type is invalid."
+            )
+
+        return cls._METRIC_MAP[metric_type](**kwargs)
+```
+
+Usage:
+
+```python
+# Built-in metric
+mean_metric = MetricFactory.create_metric(MetricType.MEAN)
+
+# Custom metric
+custom_metric = MetricFactory.create_metric(
+    MetricType.UV_SCRIPT,
+    script_path="./metrics/my_metric.py"
+)
+```
+
+## Job-Level Metrics
+
+Jobs aggregate metrics across trials:
+
+```python
+class Job:
+    def _init_metrics(self):
+        self._metrics: dict[str, list[BaseMetric]] = defaultdict(list)
+
+        # Job-level metrics
+        job_metrics = [
+            MetricFactory.create_metric(metric.type, **metric.kwargs)
+            for metric in self.config.metrics
+        ]
+
+        self._metrics["adhoc"].extend(job_metrics)
+
+        # Dataset-specific metrics
+        for dataset_config in self.config.datasets:
+            if isinstance(dataset_config, RegistryDatasetConfig):
+                client = RegistryClientFactory.create(dataset_config.registry)
+                dataset = client.get_dataset_spec(
+                    dataset_config.name, dataset_config.version
+                )
+                self._metrics[dataset_config.name].extend(
+                    [
+                        MetricFactory.create_metric(metric.type, **metric.kwargs)
+                        for metric in dataset.metrics
+                    ]
+                )
+                self._metrics[dataset_config.name].extend(job_metrics)
+
+        # Default to Mean if no metrics specified
+        for name, metrics in self._metrics.items():
+            if len(metrics) == 0:
+                self._metrics[name].append(Mean())
+```
+
+## Metric Computation in Jobs
+
+Metrics are computed as trials complete:
+
+```python
+async def _on_trial_completed(self, event: TrialHookEvent) -> None:
+    trial_result = event.result
+    agent_name = trial_result.agent_info.name
+    model_name = (
+        trial_result.agent_info.model_info.name
+        if trial_result.agent_info.model_info
+        else None
+    )
+    dataset_name = trial_result.source or "adhoc"
+    evals_key = JobStats.format_agent_evals_key(
+        agent_name, model_name, dataset_name
+    )
+
+    # Update live rewards
+    self._live_rewards[evals_key][trial_result.trial_name] = (
+        trial_result.verifier_result.rewards
+        if trial_result.verifier_result is not None
+        else None
+    )
+
+    # Recompute metrics
+    rewards_list = list(self._live_rewards[evals_key].values())
+    self._job_result.stats.evals[evals_key].metrics = [
+        metric.compute(rewards_list) for metric in self._metrics[dataset_name]
+    ]
+```
+
+## EvalStats
+
+Metric results are stored in `EvalStats`:
+
+```python
+class EvalStats(BaseModel):
+    metrics: list[dict[str, float | int]] = Field(default_factory=list)
+    n_completed: int = 0
+    n_failed: int = 0
+```
+
+Example job result:
+
+```json
+{
+  "stats": {
+    "evals": {
+      "claude-code__claude-opus-4-1__terminal-bench": {
+        "metrics": [
+          {"mean": 0.85},
+          {"pass_rate": 0.80, "average_score": 0.85}
+        ],
+        "n_completed": 100,
+        "n_failed": 0
+      }
+    }
+  }
+}
+```
+
+## Multi-Metric Evaluation
+
+Combine multiple metrics for comprehensive evaluation:
+
+```python
+metrics = [
+    Mean(),
+    Max(),
+    Min(),
+    UvScript(script_path="./metrics/pass_rate.py"),
+]
+
+for metric in metrics:
+    result = metric.compute(rewards)
+    print(result)
+```
+
+Output:
+
+```python
+{"mean": 0.75}
+{"max": 1.0}
+{"min": 0.0}
+{"pass_rate": 0.80, "std_dev": 0.15}
+```
+
+## Dataset-Specific Metrics
+
+Benchmark datasets can define their own metrics:
+
+```python
+# In dataset registry
+dataset = DatasetSpec(
+    name="swe-bench",
+    version="lite",
+    metrics=[
+        MetricConfig(type=MetricType.MEAN),
+        MetricConfig(
+            type=MetricType.UV_SCRIPT,
+            kwargs={"script_path": "./metrics/swe_bench_metrics.py"}
+        ),
+    ],
+)
+```
+
+These metrics are automatically applied to all trials from that dataset.
+
+## Handling Failed Trials
+
+Metrics must handle `None` values for failed trials:
+
+```python
+def compute(self, rewards: list[dict[str, float | int] | None]) -> dict[str, float | int]:
+    values = []
+    failed_count = 0
+
+    for reward in rewards:
+        if reward is None:
+            failed_count += 1
+            values.append(0)  # Treat failures as 0 reward
+        else:
+            values.append(reward["reward"])
+
+    return {
+        "mean": sum(values) / len(values),
+        "failure_rate": failed_count / len(rewards),
+    }
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Metric Selection">
+    - Use Mean for general performance comparison
+    - Use Max when evaluating best-case performance
+    - Use Min to identify worst-case scenarios
+    - Use custom metrics for domain-specific evaluation
+    - Combine multiple metrics for comprehensive analysis
+  </Accordion>
+
+  <Accordion title="Custom Metrics">
+    - Document metric semantics clearly
+    - Handle None values (failed trials) gracefully
+    - Validate input data format
+    - Return meaningful metric names
+    - Test metrics with edge cases
+  </Accordion>
+
+  <Accordion title="Performance">
+    - Keep metric computation fast
+    - Avoid expensive operations in metrics
+    - Cache computed values when appropriate
+    - Use efficient data structures
+    - Consider memory usage for large datasets
+  </Accordion>
+
+  <Accordion title="Reproducibility">
+    - Pin dependency versions in metric scripts
+    - Document metric algorithms
+    - Use deterministic computations
+    - Version metric implementations
+    - Test metrics for consistency
+  </Accordion>
+</AccordionGroup>
+
+## Example Custom Metrics
+
+### Pass Rate
+
+```python
+#!/usr/bin/env python3
+import argparse
+import json
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", required=True)
+    parser.add_argument("-o", "--output", required=True)
+    args = parser.parse_args()
+
+    rewards = []
+    with open(args.input) as f:
+        for line in f:
+            rewards.append(json.loads(line.strip()))
+
+    total = len(rewards)
+    passed = sum(1 for r in rewards if r and r.get("reward", 0) >= 1.0)
+
+    result = {"pass_rate": passed / total if total > 0 else 0}
+
+    with open(args.output, "w") as f:
+        json.dump(result, f)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Statistical Summary
+
+```python
+#!/usr/bin/env python3
+import argparse
+import json
+import statistics
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", required=True)
+    parser.add_argument("-o", "--output", required=True)
+    args = parser.parse_args()
+
+    rewards = []
+    with open(args.input) as f:
+        for line in f:
+            reward = json.loads(line.strip())
+            if reward:
+                rewards.append(reward["reward"])
+            else:
+                rewards.append(0)
+
+    result = {
+        "mean": statistics.mean(rewards) if rewards else 0,
+        "median": statistics.median(rewards) if rewards else 0,
+        "stdev": statistics.stdev(rewards) if len(rewards) > 1 else 0,
+        "min": min(rewards) if rewards else 0,
+        "max": max(rewards) if rewards else 0,
+    }
+
+    with open(args.output, "w") as f:
+        json.dump(result, f)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Percentile Metrics
+
+```python
+#!/usr/bin/env python3
+import argparse
+import json
+import numpy as np
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input", required=True)
+    parser.add_argument("-o", "--output", required=True)
+    args = parser.parse_args()
+
+    rewards = []
+    with open(args.input) as f:
+        for line in f:
+            reward = json.loads(line.strip())
+            rewards.append(reward["reward"] if reward else 0)
+
+    result = {
+        "p25": float(np.percentile(rewards, 25)),
+        "p50": float(np.percentile(rewards, 50)),
+        "p75": float(np.percentile(rewards, 75)),
+        "p90": float(np.percentile(rewards, 90)),
+        "p95": float(np.percentile(rewards, 95)),
+    }
+
+    with open(args.output, "w") as f:
+        json.dump(result, f)
+
+if __name__ == "__main__":
+    main()
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Verifiers" icon="check-circle" href="./verifiers">
+    Producing rewards for metrics
+  </Card>
+  <Card title="Trials and Jobs" icon="flask" href="./trials-and-jobs">
+    Trial execution and result aggregation
+  </Card>
+  <Card title="Tasks" icon="list-check" href="./tasks">
+    Task configuration and evaluation
+  </Card>
+  <Card title="Agents" icon="robot" href="./agents">
+    Agent performance measurement
+  </Card>
+</CardGroup>

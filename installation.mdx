@@ -1,0 +1,561 @@
+---
+title: "Installation"
+description: "Install Harbor and set up your evaluation environment"
+---
+
+## System Requirements
+
+Before installing Harbor, ensure your system meets these requirements:
+
+<AccordionGroup>
+  <Accordion title="Python Version" icon="python">
+    **Python 3.12 or higher** is required.
+    
+    Check your Python version:
+    ```bash
+    python --version
+    ```
+    
+    If you need to upgrade, visit [python.org](https://www.python.org/downloads/) or use a version manager like [pyenv](https://github.com/pyenv/pyenv).
+  </Accordion>
+  
+  <Accordion title="Docker (for local execution)" icon="docker">
+    **Docker** is required for running evaluations locally.
+    
+    Check if Docker is installed:
+    ```bash
+    docker --version
+    ```
+    
+    Install Docker:
+    - **macOS/Windows**: [Docker Desktop](https://www.docker.com/products/docker-desktop)
+    - **Linux**: Follow the [official Docker Engine installation guide](https://docs.docker.com/engine/install/)
+    
+    <Warning>
+      Ensure Docker daemon is running before executing Harbor evaluations. Test with `docker ps`.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="Operating System" icon="computer">
+    Harbor supports:
+    - **Linux** (recommended for production)
+    - **macOS** (great for development)
+    - **Windows** (via WSL2 with Docker Desktop)
+    
+    For Windows users, we recommend using [WSL2](https://docs.microsoft.com/en-us/windows/wsl/install) with Ubuntu.
+  </Accordion>
+  
+  <Accordion title="Memory & Storage" icon="server">
+    Recommended resources:
+    - **RAM**: 8GB minimum, 16GB+ recommended for concurrent evaluations
+    - **Storage**: 20GB+ free space for Docker images and task environments
+    - **CPU**: Multi-core processor for parallel execution
+    
+    <Tip>
+      Memory requirements scale with `--n-concurrent`. Each concurrent trial typically uses 1-2GB RAM.
+    </Tip>
+  </Accordion>
+</AccordionGroup>
+
+## Installation Methods
+
+Harbor can be installed using `uv` (recommended) or `pip`.
+
+### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver. It's the recommended way to install Harbor.
+
+<Steps>
+  <Step title="Install uv">
+    If you don't have `uv` installed:
+    
+    <CodeGroup>
+    ```bash macOS/Linux
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+    
+    ```bash Windows (PowerShell)
+    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+    ```
+    
+    ```bash pip
+    pip install uv
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Install Harbor">
+    Install Harbor as a tool:
+    
+    ```bash
+    uv tool install harbor
+    ```
+    
+    This installs Harbor and its dependencies in an isolated environment.
+  </Step>
+  
+  <Step title="Verify installation">
+    Check that Harbor is installed correctly:
+    
+    ```bash
+    harbor --version
+    ```
+    
+    You should see output like:
+    ```
+    0.1.45
+    ```
+  </Step>
+</Steps>
+
+### Using pip
+
+You can also install Harbor using standard pip:
+
+<Steps>
+  <Step title="Create a virtual environment (optional but recommended)">
+    ```bash
+    python -m venv harbor-env
+    source harbor-env/bin/activate  # On Windows: harbor-env\Scripts\activate
+    ```
+  </Step>
+  
+  <Step title="Install Harbor">
+    ```bash
+    pip install harbor
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    harbor --version
+    ```
+  </Step>
+</Steps>
+
+## Command-Line Aliases
+
+Harbor provides convenient command aliases for faster typing:
+
+```bash
+harbor    # Full command
+hr        # Short alias
+hb        # Alternative alias
+```
+
+All three are equivalent:
+
+```bash
+harbor run --dataset terminal-bench@2.0 --agent claude-code
+hr run --dataset terminal-bench@2.0 --agent claude-code
+hb run --dataset terminal-bench@2.0 --agent claude-code
+```
+
+## API Keys Setup
+
+To use AI agents, you'll need API keys from the respective providers.
+
+<AccordionGroup>
+  <Accordion title="Anthropic (Claude)" icon="key">
+    For Claude Code and Claude-based agents:
+    
+    1. Get an API key from [Anthropic Console](https://console.anthropic.com/)
+    2. Set the environment variable:
+    
+    ```bash
+    export ANTHROPIC_API_KEY=sk-ant-...
+    ```
+    
+    Make it persistent by adding to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+    
+    ```bash
+    echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+  </Accordion>
+  
+  <Accordion title="OpenAI" icon="key">
+    For OpenAI models and agents:
+    
+    1. Get an API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+    2. Set the environment variable:
+    
+    ```bash
+    export OPENAI_API_KEY=sk-...
+    ```
+  </Accordion>
+  
+  <Accordion title="Google (Gemini)" icon="key">
+    For Gemini CLI agent:
+    
+    1. Get an API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+    2. Set the environment variable:
+    
+    ```bash
+    export GEMINI_API_KEY=...
+    ```
+  </Accordion>
+  
+  <Accordion title="Other Providers" icon="key">
+    Harbor supports any LiteLLM-compatible provider:
+    
+    - **OpenRouter**: `export OPENROUTER_API_KEY=...`
+    - **Together AI**: `export TOGETHER_API_KEY=...`
+    - **Replicate**: `export REPLICATE_API_KEY=...`
+    - **Hugging Face**: `export HUGGINGFACE_API_KEY=...`
+    
+    See [LiteLLM docs](https://docs.litellm.ai/docs/providers) for the complete list.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Store API keys in a `.env` file in your project directory. Harbor automatically loads environment variables from `.env` files.
+</Tip>
+
+## Cloud Provider Setup
+
+For cloud-based evaluation execution, configure your provider credentials.
+
+<Tabs>
+  <Tab title="Daytona">
+    [Daytona](https://www.daytona.io/) provides managed development environments.
+    
+    1. Sign up at [daytona.io](https://www.daytona.io/)
+    2. Get your API key from the dashboard
+    3. Set the environment variable:
+    
+    ```bash
+    export DAYTONA_API_KEY=...
+    ```
+    
+    4. Run evaluations:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 --agent claude-code --env daytona --n-concurrent 100
+    ```
+  </Tab>
+  
+  <Tab title="Modal">
+    [Modal](https://modal.com/) provides serverless infrastructure.
+    
+    1. Install Modal CLI:
+    
+    ```bash
+    pip install modal
+    ```
+    
+    2. Authenticate:
+    
+    ```bash
+    modal token new
+    ```
+    
+    3. Run evaluations:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 --agent claude-code --env modal --n-concurrent 50
+    ```
+  </Tab>
+  
+  <Tab title="E2B">
+    [E2B](https://e2b.dev/) provides code execution sandboxes.
+    
+    1. Sign up at [e2b.dev](https://e2b.dev/)
+    2. Get your API key
+    3. Set the environment variable:
+    
+    ```bash
+    export E2B_API_KEY=...
+    ```
+    
+    4. Run evaluations:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 --agent claude-code --env e2b
+    ```
+  </Tab>
+  
+  <Tab title="Runloop">
+    [Runloop](https://runloop.com/) provides DevOps automation.
+    
+    1. Set up Runloop credentials according to their documentation
+    2. Run evaluations:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 --agent claude-code --env runloop
+    ```
+  </Tab>
+  
+  <Tab title="GKE">
+    Google Kubernetes Engine for large-scale deployments.
+    
+    1. Set up GCP credentials and kubectl access
+    2. Configure GKE cluster
+    3. Run evaluations:
+    
+    ```bash
+    harbor run --dataset terminal-bench@2.0 --agent claude-code --env gke
+    ```
+  </Tab>
+</Tabs>
+
+## Docker Configuration
+
+For local execution, optimize Docker settings for Harbor:
+
+<AccordionGroup>
+  <Accordion title="Resource Limits" icon="gauge">
+    Configure Docker Desktop resource limits:
+    
+    1. Open Docker Desktop Settings
+    2. Go to Resources
+    3. Adjust:
+       - **CPUs**: Allocate enough for `--n-concurrent` trials
+       - **Memory**: At least 2GB per concurrent trial
+       - **Disk space**: 50GB+ recommended
+    
+    For Docker Engine on Linux, modify `/etc/docker/daemon.json`:
+    
+    ```json
+    {
+      "default-ulimits": {
+        "nofile": {
+          "Name": "nofile",
+          "Hard": 64000,
+          "Soft": 64000
+        }
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Image Caching" icon="database">
+    Harbor caches Docker images for faster subsequent runs. To manage cache:
+    
+    ```bash
+    # View cache usage
+    harbor cache info
+    
+    # Clear cache
+    harbor cache clear
+    
+    # Prune old Docker images
+    docker system prune -a
+    ```
+  </Accordion>
+  
+  <Accordion title="Network Configuration" icon="network-wired">
+    Some tasks require internet access. Ensure Docker containers can reach external networks:
+    
+    ```bash
+    # Test network connectivity
+    docker run --rm alpine ping -c 1 google.com
+    ```
+    
+    If you're behind a proxy, configure Docker proxy settings in Docker Desktop or daemon configuration.
+  </Accordion>
+</AccordionGroup>
+
+## Verification
+
+Verify your Harbor installation is working correctly:
+
+<Steps>
+  <Step title="Check version and help">
+    ```bash
+    harbor --version
+    harbor --help
+    ```
+  </Step>
+  
+  <Step title="List available datasets">
+    ```bash
+    harbor datasets list
+    ```
+    
+    This should show available benchmarks from the Harbor registry.
+  </Step>
+  
+  <Step title="Run a test evaluation">
+    Test with the Oracle agent (always succeeds):
+    
+    ```bash
+    # Create a simple task
+    mkdir -p test-task/tests
+    echo 'Create a file called hello.txt with "Hello, world!"' > test-task/instruction.md
+    cat > test-task/task.toml << EOF
+    version = "1.0"
+    [agent]
+    timeout_sec = 60.0
+    [verifier]
+    timeout_sec = 60.0
+    EOF
+    
+    cat > test-task/tests/test_state.py << EOF
+    from pathlib import Path
+    def test_hello():
+        assert Path("/app/hello.txt").read_text().strip() == "Hello, world!"
+    EOF
+    
+    # Run evaluation
+    harbor run --path test-task --agent oracle
+    ```
+    
+    If successful, you should see a completion message with reward 1.0.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Python version error" icon="triangle-exclamation">
+    **Error**: `Python 3.12 or higher is required`
+    
+    **Solution**: Upgrade Python using:
+    - [pyenv](https://github.com/pyenv/pyenv): `pyenv install 3.12 && pyenv global 3.12`
+    - [Official installer](https://www.python.org/downloads/)
+    - System package manager: `brew install python@3.12` (macOS)
+  </Accordion>
+  
+  <Accordion title="Docker daemon not running" icon="triangle-exclamation">
+    **Error**: `Cannot connect to the Docker daemon`
+    
+    **Solution**:
+    - Start Docker Desktop (macOS/Windows)
+    - Start Docker daemon: `sudo systemctl start docker` (Linux)
+    - Verify: `docker ps`
+  </Accordion>
+  
+  <Accordion title="Permission denied (Docker)" icon="triangle-exclamation">
+    **Error**: `Permission denied while trying to connect to Docker`
+    
+    **Solution** (Linux):
+    ```bash
+    sudo usermod -aG docker $USER
+    newgrp docker
+    ```
+    
+    Or run Docker commands with `sudo`.
+  </Accordion>
+  
+  <Accordion title="Module import errors" icon="triangle-exclamation">
+    **Error**: `ImportError: No module named 'harbor'`
+    
+    **Solution**:
+    - Ensure you're in the correct virtual environment
+    - Reinstall: `pip install --force-reinstall harbor`
+    - Check installation: `pip show harbor`
+  </Accordion>
+  
+  <Accordion title="API key not found" icon="triangle-exclamation">
+    **Error**: `API key not found for provider`
+    
+    **Solution**:
+    - Set environment variable: `export ANTHROPIC_API_KEY=...`
+    - Check it's set: `echo $ANTHROPIC_API_KEY`
+    - Add to shell profile for persistence
+  </Accordion>
+  
+  <Accordion title="Out of memory during evaluation" icon="triangle-exclamation">
+    **Error**: Docker containers killed or system freezes
+    
+    **Solution**:
+    - Reduce `--n-concurrent` flag
+    - Increase Docker memory limits
+    - Use cloud provider for large-scale runs
+  </Accordion>
+</AccordionGroup>
+
+## Development Installation
+
+For contributing to Harbor or developing custom extensions:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/laude-institute/harbor.git
+    cd harbor
+    ```
+  </Step>
+  
+  <Step title="Install with development dependencies">
+    ```bash
+    uv sync --all-extras --dev
+    ```
+  </Step>
+  
+  <Step title="Run tests">
+    ```bash
+    uv run pytest tests/
+    ```
+  </Step>
+  
+  <Step title="Format and lint">
+    ```bash
+    uvx ruff format .
+    uvx ruff check --fix .
+    uvx ty check
+    ```
+  </Step>
+</Steps>
+
+## Uninstallation
+
+To remove Harbor:
+
+<CodeGroup>
+```bash uv
+uv tool uninstall harbor
+```
+
+```bash pip
+pip uninstall harbor
+```
+</CodeGroup>
+
+Optionally clean up cached data:
+
+```bash
+rm -rf ~/.cache/harbor
+rm -rf ~/.harbor
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card 
+    title="Quickstart Guide" 
+    icon="rocket" 
+    href="/quickstart"
+  >
+    Run your first evaluation in minutes
+  </Card>
+  
+  <Card 
+    title="Core Concepts" 
+    icon="book" 
+    href="/concepts/tasks"
+  >
+    Learn about Harbor's architecture
+  </Card>
+  
+  <Card 
+    title="CLI Reference" 
+    icon="terminal" 
+    href="/cli/run"
+  >
+    Explore all available commands
+  </Card>
+  
+  <Card 
+    title="Configuration" 
+    icon="gear" 
+    href="/api-reference/job-config"
+  >
+    Advanced configuration options
+  </Card>
+</CardGroup>
+
+<Note>
+  **Need help?** Join our [Discord community](https://discord.gg/6xWPKhGDbA) for support.
+</Note>

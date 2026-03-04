@@ -1,0 +1,434 @@
+---
+title: Agents
+description: Understanding the agent system and BaseAgent interface in Harbor
+---
+
+## Overview
+
+**Agents** are AI systems that attempt to complete tasks in Harbor. Harbor provides a unified interface for evaluating diverse agents, from commercial products like Claude Code to open-source tools like Aider and OpenHands.
+
+All agents in Harbor implement the `BaseAgent` abstract class, ensuring consistent execution and evaluation across different implementations.
+
+## BaseAgent Interface
+
+The foundation of Harbor's agent system is the `BaseAgent` abstract class defined in `src/harbor/agents/base.py`:
+
+```python
+from abc import ABC, abstractmethod
+from pathlib import Path
+import logging
+
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class BaseAgent(ABC):
+    logs_dir: Path
+    model_name: str | None
+    logger: logging.Logger
+
+    # Whether agent supports Harbor's trajectory format (ATIF)
+    SUPPORTS_ATIF: bool = False
+
+    def __init__(
+        self,
+        logs_dir: Path,
+        model_name: str | None = None,
+        logger: logging.Logger | None = None,
+        mcp_servers: list[MCPServerConfig] | None = None,
+        skills_dir: str | None = None,
+        *args,
+        **kwargs,
+    ):
+        self.logs_dir = logs_dir
+        self.model_name = model_name
+        self.logger = (logger or global_logger).getChild(__name__)
+        self.mcp_servers = mcp_servers or []
+        self.skills_dir = skills_dir
+
+    @staticmethod
+    @abstractmethod
+    def name() -> str:
+        """The name of the agent."""
+
+    @abstractmethod
+    def version(self) -> str | None:
+        """The version of the agent."""
+
+    @abstractmethod
+    async def setup(self, environment: BaseEnvironment) -> None:
+        """Run commands to setup the agent & its tools."""
+
+    @abstractmethod
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        """Runs the agent in the environment."""
+```
+
+## Required Methods
+
+### name()
+
+Returns the agent's identifier as a string.
+
+```python
+@staticmethod
+def name() -> str:
+    return "claude-code"
+```
+
+<Info>
+This is a static method, so it can be called without instantiating the agent.
+</Info>
+
+### version()
+
+Returns the agent's version, or `None` if not applicable.
+
+```python
+def version(self) -> str | None:
+    result = subprocess.run(
+        ["aider", "--version"],
+        capture_output=True,
+        text=True
+    )
+    return result.stdout.strip()
+```
+
+### setup()
+
+Prepares the agent for execution. This is where you:
+- Install the agent and its dependencies
+- Configure MCP servers from `self.mcp_servers`
+- Copy skills from `self.skills_dir` to the agent's expected location
+- Set up any required authentication
+
+```python
+async def setup(self, environment: BaseEnvironment) -> None:
+    # Install the agent
+    await environment.exec("pip install aider-chat")
+
+    # Configure MCP servers if any
+    if self.mcp_servers:
+        mcp_config = {
+            "mcpServers": {
+                server.name: self._format_mcp_server(server)
+                for server in self.mcp_servers
+            }
+        }
+        await environment.exec(
+            f"echo '{json.dumps(mcp_config)}' > ~/.aider.mcp.json"
+        )
+
+    # Copy skills if provided
+    if self.skills_dir:
+        await environment.upload_dir(
+            self.skills_dir,
+            "/home/user/.aider/skills"
+        )
+```
+
+<Warning>
+The `setup()` method is called once per trial. Keep it efficient to minimize overhead.
+</Warning>
+
+### run()
+
+Executes the agent to complete the task. Must populate the `context` parameter with execution results.
+
+```python
+async def run(
+    self,
+    instruction: str,
+    environment: BaseEnvironment,
+    context: AgentContext,
+) -> None:
+    # Write instruction to file
+    instruction_path = self.logs_dir / "instruction.md"
+    instruction_path.write_text(instruction)
+
+    # Execute the agent
+    result = await environment.exec(
+        f"aider --yes --message-file {instruction_path}",
+        timeout_sec=600
+    )
+
+    # Populate context with results
+    context.n_input_tokens = self._extract_input_tokens(result.stdout)
+    context.n_output_tokens = self._extract_output_tokens(result.stdout)
+    context.cost_usd = self._calculate_cost(context)
+```
+
+<Note>
+**Populate the context**: The `AgentContext` object should be updated with token usage, costs, and any other relevant metadata. This data is saved in trial results.
+</Note>
+
+## AgentContext
+
+The `AgentContext` model tracks agent execution metadata:
+
+```python
+class AgentContext(BaseModel):
+    n_input_tokens: int | None = None
+    n_cache_tokens: int | None = None
+    n_output_tokens: int | None = None
+    cost_usd: float | None = None
+    rollout_details: list[RolloutDetail] | None = None
+    metadata: dict[str, Any] | None = None
+```
+
+### Fields
+
+- `n_input_tokens`: Total input tokens (including cache reads)
+- `n_cache_tokens`: Tokens served from cache
+- `n_output_tokens`: Generated tokens
+- `cost_usd`: Total cost in USD
+- `rollout_details`: Trajectory data for RL training (ATIF format)
+- `metadata`: Additional agent-specific data
+
+## Built-in Agents
+
+Harbor includes many pre-built agents:
+
+### Installed Agents
+
+These agents are installed in the environment at runtime:
+
+- `claude-code` - Anthropic's Claude Code agent
+- `openhands` - OpenHands coding agent
+- `aider` - Aider pair programming tool
+- `codex` - Codex CLI tool
+- `goose` - Goose AI agent
+- `gemini-cli` - Google Gemini CLI
+- `qwen-coder` - Qwen Code assistant
+- `opencode` - OpenCode agent
+- `cursor-cli` - Cursor CLI tool
+- `cline-cli` - Cline CLI agent
+- `mini-swe-agent` - Lightweight SWE agent
+
+### Internal Agents
+
+- `terminus` - Advanced Terminus agent
+- `terminus-1` - Terminus variant 1
+- `terminus-2` - Terminus variant 2
+
+### Utility Agents
+
+- `oracle` - Perfect agent for testing (uses reference solutions)
+- `nop` - No-operation agent (does nothing)
+
+## Agent Installation
+
+Many agents use Jinja2 templates for installation scripts:
+
+```bash
+# src/harbor/agents/installed/install-aider.sh.j2
+#!/bin/bash
+set -euo pipefail
+
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+pip install aider-chat=={{ version }}
+```
+
+The template is rendered with agent-specific variables during `setup()`.
+
+## Model Configuration
+
+Agents can be configured with specific models:
+
+```bash
+harber run \
+  --agent claude-code \
+  --model anthropic/claude-opus-4-1 \
+  --dataset terminal-bench@2.0
+```
+
+The model name is parsed into provider and name:
+
+```python
+if "/" in self.model_name:
+    self._parsed_model_provider, self._parsed_model_name = \
+        self.model_name.split("/", maxsplit=1)
+```
+
+## AgentInfo Metadata
+
+Each trial records information about the agent:
+
+```python
+class ModelInfo(BaseModel):
+    name: str
+    provider: str
+
+class AgentInfo(BaseModel):
+    name: str
+    version: str
+    model_info: ModelInfo | None = None
+```
+
+This is automatically populated from the agent:
+
+```python
+def to_agent_info(self) -> AgentInfo:
+    return AgentInfo(
+        name=self.name(),
+        version=self.version() or "unknown",
+        model_info=(
+            ModelInfo(
+                name=self._parsed_model_name,
+                provider=self._parsed_model_provider
+            )
+            if self._parsed_model_name and self._parsed_model_provider
+            else None
+        ),
+    )
+```
+
+## ATIF Support
+
+Agents can support the **Agent Trajectory Interchange Format** (ATIF) for RL optimization:
+
+```python
+class BaseAgent(ABC):
+    SUPPORTS_ATIF: bool = False  # Set to True if agent supports ATIF
+```
+
+When `SUPPORTS_ATIF = True`, the agent should populate `context.rollout_details` with trajectory data including:
+- Token IDs
+- Loss masks
+- Log probabilities
+
+## Environment Variables
+
+Pass environment variables to agents at runtime:
+
+```bash
+harber run \
+  --agent claude-code \
+  --ae ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  --ae AWS_REGION=us-east-1 \
+  --dataset terminal-bench@2.0
+```
+
+Common variables:
+- `ANTHROPIC_API_KEY` - For Claude-based agents
+- `OPENAI_API_KEY` - For OpenAI-based agents
+- Custom API keys and configuration
+
+## Creating Custom Agents
+
+### Step 1: Extend BaseAgent
+
+```python
+from harbor.agents.base import BaseAgent
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+
+class MyCustomAgent(BaseAgent):
+    SUPPORTS_ATIF = False
+
+    @staticmethod
+    def name() -> str:
+        return "my-custom-agent"
+
+    def version(self) -> str | None:
+        return "1.0.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        # Install your agent
+        await environment.exec("pip install my-agent")
+
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        # Execute your agent
+        result = await environment.exec(f"my-agent '{instruction}'")
+
+        # Populate context
+        context.metadata = {"exit_code": result.return_code}
+```
+
+### Step 2: Register the Agent
+
+Add to `src/harbor/models/agent/name.py`:
+
+```python
+class AgentName(str, Enum):
+    # ... existing agents ...
+    MY_CUSTOM_AGENT = "my-custom-agent"
+```
+
+### Step 3: Update Agent Factory
+
+Register in `src/harbor/agents/factory.py`:
+
+```python
+from harbor.agents.my_custom_agent import MyCustomAgent
+
+class AgentFactory:
+    _AGENT_MAP = {
+        # ... existing agents ...
+        AgentName.MY_CUSTOM_AGENT: MyCustomAgent,
+    }
+```
+
+### Step 4: Use Your Agent
+
+```bash
+harber run --agent my-custom-agent --dataset my-benchmark
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Error Handling">
+    - Catch and log exceptions in `run()` and `setup()`
+    - Don't let exceptions propagate silently
+    - Provide meaningful error messages
+    - Set appropriate timeouts
+  </Accordion>
+
+  <Accordion title="Resource Management">
+    - Clean up temporary files after execution
+    - Respect timeout constraints
+    - Minimize installation time in `setup()`
+    - Use efficient logging practices
+  </Accordion>
+
+  <Accordion title="Context Population">
+    - Always populate token counts when possible
+    - Calculate costs accurately
+    - Include relevant metadata
+    - Document custom metadata fields
+  </Accordion>
+
+  <Accordion title="Reproducibility">
+    - Pin dependency versions
+    - Use deterministic configuration
+    - Document random seed handling
+    - Make agent behavior predictable
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Environments" icon="server" href="./environments">
+    Execution environments for agents
+  </Card>
+  <Card title="Trials" icon="flask" href="./trials-and-jobs">
+    How agents are executed in trials
+  </Card>
+  <Card title="Tasks" icon="list-check" href="./tasks">
+    Tasks that agents complete
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="./metrics">
+    Measuring agent performance
+  </Card>
+</CardGroup>

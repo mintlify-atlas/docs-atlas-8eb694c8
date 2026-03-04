@@ -1,0 +1,322 @@
+---
+title: Tasks
+description: Understanding task structure and components in Harbor
+---
+
+## Overview
+
+A **task** is the fundamental unit of evaluation in Harbor. It represents a discrete challenge that an agent must complete, along with all the resources needed to execute and verify the solution.
+
+Tasks are self-contained directories that include the task description, execution environment, verification tests, and configuration settings.
+
+## Task Structure
+
+Every Harbor task follows a standardized directory structure:
+
+```
+hello-alpine/
+├── task.toml           # Task configuration
+├── instruction.md      # Natural language task description
+├── environment/        # Environment definition
+│   └── Dockerfile      # Container specification
+├── tests/              # Verification scripts
+│   ├── test.sh         # Main test script
+│   └── test_state.py   # Optional: additional test files
+└── solution/           # Optional: reference solution
+    └── solve.sh
+```
+
+### Required Components
+
+#### task.toml
+
+The configuration file defining timeouts, resource requirements, and metadata.
+
+```toml
+version = "1.0"
+
+[metadata]
+author_name = "Alex Shaw"
+author_email = "alexgshaw64@gmail.com"
+difficulty = "easy"
+category = "programming"
+tags = ["trivial", "alpine"]
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 120.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+```
+
+<Accordion title="Configuration Reference">
+
+**Version**
+- `version`: Task schema version (currently "1.0")
+
+**Metadata** (optional)
+- `author_name`: Task author
+- `author_email`: Contact email
+- `difficulty`: Task difficulty level
+- `category`: Task category (e.g., "programming", "reasoning")
+- `tags`: List of relevant tags
+
+**Verifier**
+- `timeout_sec`: Maximum time for verification (default: 600.0)
+- `env`: Environment variables for the verifier
+
+**Agent**
+- `timeout_sec`: Maximum time for agent execution (default: 600.0)
+
+**Environment**
+- `build_timeout_sec`: Maximum time for building the environment (default: 600.0)
+- `cpus`: Number of CPU cores (default: 1)
+- `memory_mb`: Memory in megabytes (default: 2048)
+- `storage_mb`: Storage in megabytes (default: 10240)
+- `gpus`: Number of GPUs (default: 0)
+- `gpu_types`: List of acceptable GPU types (e.g., `["H100", "A100"]`)
+- `allow_internet`: Whether to allow internet access (default: true)
+- `docker_image`: Pre-built Docker image to use instead of building from Dockerfile
+
+</Accordion>
+
+#### instruction.md
+
+A natural language description of what the agent needs to accomplish. This is provided to the agent at runtime.
+
+```markdown
+Create a file called hello.txt with "Hello, world!" as the content.
+```
+
+<Info>
+Keep instructions clear and concise. The agent receives this exact text as its task description.
+</Info>
+
+#### environment/
+
+Defines the execution environment where the agent operates. Typically contains a Dockerfile:
+
+```dockerfile
+FROM alpine:3.22
+
+# bash is required for Harbor's docker environment
+RUN apk add --no-cache bash
+
+WORKDIR /app
+```
+
+<Warning>
+The environment must include `bash` for Harbor to function correctly with Docker-based environments.
+</Warning>
+
+#### tests/
+
+Contains verification scripts that grade the agent's performance. The main test script must write the reward to a specific location.
+
+```bash
+#!/bin/bash
+set -e
+
+# Your test logic here...
+
+if uvx pytest /tests/test_state.py -rA; then
+  echo 1 > /logs/verifier/reward.txt
+else
+  echo 0 > /logs/verifier/reward.txt
+fi
+```
+
+<Note>
+The verifier **must** write the reward to either `/logs/verifier/reward.txt` (single number) or `/logs/verifier/reward.json` (JSON object with multiple metrics).
+</Note>
+
+### Optional Components
+
+#### solution/
+
+Reference solution for the task. Useful for documentation and testing.
+
+```bash
+#!/bin/bash
+echo "Hello, world!" > hello.txt
+```
+
+## Task Configuration Models
+
+Harbor uses Pydantic models to validate and manage task configurations:
+
+### TaskConfig
+
+```python
+class TaskConfig(BaseModel):
+    version: str = "1.0"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    verifier: VerifierConfig = Field(default_factory=VerifierConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+    environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
+    solution: SolutionConfig = Field(default_factory=SolutionConfig)
+    source: str | None = None
+```
+
+### EnvironmentConfig
+
+```python
+class EnvironmentConfig(BaseModel):
+    build_timeout_sec: float = 600.0
+    docker_image: str | None = None
+    cpus: int = 1
+    memory_mb: int = 2048
+    storage_mb: int = 10240
+    gpus: int = 0
+    gpu_types: list[str] | None = None
+    allow_internet: bool = True
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
+    skills_dir: str | None = None
+```
+
+### VerifierConfig
+
+```python
+class VerifierConfig(BaseModel):
+    timeout_sec: float = 600.0
+    env: dict[str, str] = Field(default_factory=dict)
+```
+
+## MCP Server Integration
+
+Tasks can define Model Context Protocol (MCP) servers that agents can use:
+
+```toml
+[environment]
+[[environment.mcp_servers]]
+name = "filesystem"
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/app"]
+
+[[environment.mcp_servers]]
+name = "search"
+transport = "sse"
+url = "https://api.example.com/mcp"
+```
+
+### MCPServerConfig
+
+```python
+class MCPServerConfig(BaseModel):
+    name: str
+    transport: str = "sse"  # "sse" | "streamable-http" | "stdio"
+    url: str | None = None  # required for sse/streamable-http
+    command: str | None = None  # for stdio
+    args: list[str] = Field(default_factory=list)  # for stdio
+```
+
+## Creating Tasks
+
+### Using the CLI Template
+
+The fastest way to create a new task:
+
+```bash
+harber tasks create my-new-task
+```
+
+This generates a task directory with the standard structure and placeholder content.
+
+### Manual Creation
+
+1. Create the directory structure
+2. Write `task.toml` with appropriate timeouts and resources
+3. Create `instruction.md` with the task description
+4. Build the `environment/Dockerfile`
+5. Write verification tests in `tests/test.sh`
+6. Optionally add a reference solution
+
+## Task Identification
+
+Harbor supports two types of task identifiers:
+
+### LocalTaskId
+
+For tasks defined locally on the filesystem:
+
+```python
+class LocalTaskId(BaseModel):
+    path: str  # Absolute path to task directory
+```
+
+### GitTaskId
+
+For tasks from Git repositories:
+
+```python
+class GitTaskId(BaseModel):
+    repo_url: str
+    commit: str
+    path: str  # Path within repository
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Resource Allocation">
+    - Set realistic timeouts based on task complexity
+    - Allocate sufficient memory for task requirements
+    - Use GPUs only when necessary (they're expensive)
+    - Consider internet access requirements
+  </Accordion>
+
+  <Accordion title="Environment Design">
+    - Keep environments minimal to reduce build time
+    - Use specific base image versions for reproducibility
+    - Install only necessary dependencies
+    - Always include bash for Harbor compatibility
+  </Accordion>
+
+  <Accordion title="Verification">
+    - Make tests deterministic and reproducible
+    - Provide clear pass/fail criteria
+    - Use binary rewards (0 or 1) for simple tasks
+    - Use JSON rewards for multi-dimensional evaluation
+    - Handle edge cases in verification logic
+  </Accordion>
+
+  <Accordion title="Instructions">
+    - Be specific and unambiguous
+    - Provide necessary context
+    - Avoid overly prescriptive implementation details
+    - Test instructions with multiple agents
+  </Accordion>
+</AccordionGroup>
+
+## Example Tasks
+
+Harbor includes several example tasks in the repository:
+
+- `examples/tasks/hello-alpine/` - Simple file creation task
+- `examples/tasks/` - Additional task examples
+
+Explore these to understand common patterns and best practices.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Verifiers" icon="check-circle" href="./verifiers">
+    Learn about the verification system
+  </Card>
+  <Card title="Environments" icon="server" href="./environments">
+    Understand execution environments
+  </Card>
+  <Card title="Trials" icon="flask" href="./trials-and-jobs">
+    See how tasks are executed as trials
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="./metrics">
+    Measure task performance
+  </Card>
+</CardGroup>
